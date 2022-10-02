@@ -46,8 +46,15 @@ if len(NETRC_URL) != 0:
 TORRENT_TIMEOUT = environ.get('TORRENT_TIMEOUT', '')
 TORRENT_TIMEOUT = None if len(TORRENT_TIMEOUT) == 0 else int(TORRENT_TIMEOUT)
 
-PORT = environ.get('PORT')
-Popen(f"gunicorn web.wserver:app --bind 0.0.0.0:{PORT}", shell=True)
+BASE_URL = environ.get('BASE_URL_OF_BOT', '').rstrip("/")
+if len(BASE_URL) == 0:
+    log_warning('BASE_URL_OF_BOT not provided!')
+    BASE_URL = None
+
+if BASE_URL is not None:
+    PORT = environ.get('PORT')
+    Popen(f"gunicorn web.wserver:app --bind 0.0.0.0:{PORT}", shell=True)
+
 srun(["firefox", "-d", "--profile=."])
 if not ospath.exists('.netrc'):
     srun(["touch", ".netrc"])
@@ -67,24 +74,17 @@ QbInterval = []
 DRIVES_NAMES = []
 DRIVES_IDS = []
 INDEX_URLS = []
-
-def getConfig(name: str):
-    return environ[name]
+EXTENSION_FILTER = {'.aria2'}
+user_data = {}
 
 try:
-    if bool(getConfig('_____REMOVE_THIS_LINE_____')):
+    if bool(environ.get('_____REMOVE_THIS_LINE_____')):
         log_error('The README.md file there to be read! Exiting now!')
         exit()
 except:
     pass
 
-aria2 = ariaAPI(
-    ariaClient(
-        host="http://localhost",
-        port=6800,
-        secret="",
-    )
-)
+aria2 = ariaAPI(ariaClient(host="http://localhost", port=6800, secret=""))
 
 def get_client():
     return qbClient(host="localhost", port=8090, VERIFY_WEBUI_CERTIFICATE=False, REQUESTS_ARGS={'timeout': (30, 60)})
@@ -104,46 +104,78 @@ rss_dict = {}
 # value: [listener, extras, isNeedEngine, time_out]
 btn_listener = {}
 
-AS_DOC_USERS = set()
-AS_MEDIA_USERS = set()
-EXTENSION_FILTER = {'.aria2'}
-
-try:
-    BOT_TOKEN = getConfig('BOT_TOKEN')
-    parent_id = getConfig('GDRIVE_FOLDER_ID')
-    DOWNLOAD_DIR = getConfig('DOWNLOAD_DIR')
-    if not DOWNLOAD_DIR.endswith("/"):
-        DOWNLOAD_DIR = DOWNLOAD_DIR + '/'
-    DOWNLOAD_STATUS_UPDATE_INTERVAL = int(getConfig('DOWNLOAD_STATUS_UPDATE_INTERVAL'))
-    OWNER_ID = int(getConfig('OWNER_ID'))
-    AUTO_DELETE_MESSAGE_DURATION = int(getConfig('AUTO_DELETE_MESSAGE_DURATION'))
-    TELEGRAM_API = getConfig('TELEGRAM_API')
-    TELEGRAM_HASH = getConfig('TELEGRAM_HASH')
-except:
-    log_error("One or more env variables missing! Exiting now")
+BOT_TOKEN = environ.get('BOT_TOKEN', '')
+if len(BOT_TOKEN) == 0:
+    log_error("BOT_TOKEN variable is missing! Exiting now")
     exit(1)
 
+OWNER_ID = environ.get('OWNER_ID', '')
+if len(OWNER_ID) == 0:
+    log_error("OWNER_ID variable is missing! Exiting now")
+    exit(1)
+else:
+    OWNER_ID = int(OWNER_ID)
+
+TELEGRAM_API = environ.get('TELEGRAM_API', '')
+if len(TELEGRAM_API) == 0:
+    log_error("TELEGRAM_API variable is missing! Exiting now")
+    exit(1)
+else:
+    TELEGRAM_API = int(TELEGRAM_API)
+
+TELEGRAM_HASH = environ.get('TELEGRAM_HASH', '')
+if len(TELEGRAM_HASH) == 0:
+    log_error("TELEGRAM_HASH variable is missing! Exiting now")
+    exit(1)
+
+PARENT_ID = environ.get('GDRIVE_FOLDER_ID', '')
+if len(PARENT_ID) == 0:
+    PARENT_ID = None
+
+DOWNLOAD_DIR = environ.get('DOWNLOAD_DIR', '')
+if len(DOWNLOAD_DIR) == 0:
+    DOWNLOAD_DIR = '/usr/src/app/downloads/'
+elif not DOWNLOAD_DIR.endswith("/"):
+    DOWNLOAD_DIR = DOWNLOAD_DIR + '/'
+
+DOWNLOAD_STATUS_UPDATE_INTERVAL = environ.get('DOWNLOAD_STATUS_UPDATE_INTERVAL', '')
+if len(DOWNLOAD_STATUS_UPDATE_INTERVAL) == 0:
+    DOWNLOAD_STATUS_UPDATE_INTERVAL = 10
+else:
+    DOWNLOAD_STATUS_UPDATE_INTERVAL = int(DOWNLOAD_STATUS_UPDATE_INTERVAL)
+
+AUTO_DELETE_MESSAGE_DURATION = environ.get('AUTO_DELETE_MESSAGE_DURATION', '')
+if len(AUTO_DELETE_MESSAGE_DURATION) == 0:
+    AUTO_DELETE_MESSAGE_DURATION = 30
+else:
+    AUTO_DELETE_MESSAGE_DURATION = int(AUTO_DELETE_MESSAGE_DURATION)
+
 aid = environ.get('AUTHORIZED_CHATS', '')
-aid = aid.split()
-AUTHORIZED_CHATS = {int(_id.strip()) for _id in aid}
+if len(aid) != 0:
+    aid = aid.split()
+    for id_ in aid:
+        user_data[id_.strip()] = {'is_auth': True}
+
 aid = environ.get('SUDO_USERS', '')
-aid = aid.split()
-SUDO_USERS = {int(_id.strip()) for _id in aid}
+if len(aid) != 0:
+    aid = aid.split()
+    for id_ in aid:
+        user_data[id_.strip()] = {'is_sudo': True}
+
 fx = environ.get('EXTENSION_FILTER', '')
 if len(fx) > 0:
     fx = fx.split()
     for x in fx:
         EXTENSION_FILTER.add(x.strip().lower())
 
-
 IS_PREMIUM_USER = False
 USER_SESSION_STRING = environ.get('USER_SESSION_STRING', '')
 if len(USER_SESSION_STRING) == 0:
     log_info("Creating client from BOT_TOKEN")
-    app = Client(name='pyrogram', api_id=int(TELEGRAM_API), api_hash=TELEGRAM_HASH, bot_token=BOT_TOKEN, parse_mode=enums.ParseMode.HTML, no_updates=True)
+    app = Client(name='pyrogram', api_id=TELEGRAM_API, api_hash=TELEGRAM_HASH, bot_token=BOT_TOKEN, parse_mode=enums.ParseMode.HTML, no_updates=True)
 else:
     log_info("Creating client from USER_SESSION_STRING")
-    app = Client(name='pyrogram', api_id=int(TELEGRAM_API), api_hash=TELEGRAM_HASH, session_string=USER_SESSION_STRING, parse_mode=enums.ParseMode.HTML, no_updates=True)
+    app = Client(name='pyrogram', api_id=TELEGRAM_API, api_hash=TELEGRAM_HASH, session_string=USER_SESSION_STRING, parse_mode=enums.ParseMode.HTML, no_updates=True)
     with app:
         IS_PREMIUM_USER = app.me.is_premium
 
@@ -152,7 +184,7 @@ if len(RSS_USER_SESSION_STRING) == 0:
     rss_session = None
 else:
     log_info("Creating client from RSS_USER_SESSION_STRING")
-    rss_session = Client(name='rss_session', api_id=int(TELEGRAM_API), api_hash=TELEGRAM_HASH, session_string=RSS_USER_SESSION_STRING, parse_mode=enums.ParseMode.HTML, no_updates=True)
+    rss_session = Client(name='rss_session', api_id=TELEGRAM_API, api_hash=TELEGRAM_HASH, session_string=RSS_USER_SESSION_STRING, parse_mode=enums.ParseMode.HTML, no_updates=True)
 
 def aria2c_init():
     try:
@@ -187,11 +219,9 @@ if MEGA_KEY is not None:
     sleep(3)  # Wait for the mega server to start listening
     mega_client = MegaSdkRestClient('http://localhost:6090')
     try:
-        MEGA_USERNAME = getConfig('MEGA_EMAIL_ID')
-        MEGA_PASSWORD = getConfig('MEGA_PASSWORD')
-        if len(MEGA_USERNAME) > 0 and len(MEGA_PASSWORD) > 0:
+        if MEGA_EMAIL_ID and MEGA_PASSWORD:
             try:
-                mega_client.login(MEGA_USERNAME, MEGA_PASSWORD)
+                mega_client.login(MEGA_EMAIL_ID, MEGA_PASSWORD)
             except mega_err.MegaSdkRestClientException as e:
                 log_error(e.message['message'])
                 exit(0)
@@ -216,8 +246,10 @@ else:
 
 DUMP_CHAT = environ.get('DUMP_CHAT', '')
 DUMP_CHAT = None if len(DUMP_CHAT) == 0 else int(DUMP_CHAT)
+
 STATUS_LIMIT = environ.get('STATUS_LIMIT', '')
 STATUS_LIMIT = None if len(STATUS_LIMIT) == 0 else int(STATUS_LIMIT)
+
 UPTOBOX_TOKEN = environ.get('UPTOBOX_TOKEN', '')
 if len(UPTOBOX_TOKEN) == 0:
     UPTOBOX_TOKEN = None
@@ -235,6 +267,7 @@ if len(SEARCH_API_LINK) == 0:
 
 SEARCH_LIMIT = environ.get('SEARCH_LIMIT', '')
 SEARCH_LIMIT = 0 if len(SEARCH_LIMIT) == 0 else int(SEARCH_LIMIT)
+
 RSS_COMMAND = environ.get('RSS_COMMAND', '')
 if len(RSS_COMMAND) == 0:
     RSS_COMMAND = None
@@ -243,12 +276,10 @@ CMD_INDEX = environ.get('CMD_INDEX', '')
 
 RSS_CHAT_ID = environ.get('RSS_CHAT_ID', '')
 RSS_CHAT_ID = None if len(RSS_CHAT_ID) == 0 else int(RSS_CHAT_ID)
+
 RSS_DELAY = environ.get('RSS_DELAY', '')
 RSS_DELAY = 900 if len(RSS_DELAY) == 0 else int(RSS_DELAY)
-BASE_URL = environ.get('BASE_URL_OF_BOT', '').rstrip("/")
-if len(BASE_URL) == 0:
-    log_warning('BASE_URL_OF_BOT not provided!')
-    BASE_URL = None
+
 
 CUSTOM_FILENAME = environ.get('CUSTOM_FILENAME', '')
 if len(CUSTOM_FILENAME) == 0:
@@ -339,7 +370,7 @@ if len(YT_COOKIES_URL) != 0:
         log_error(f"YT_COOKIES_URL: {e}")
 
 DRIVES_NAMES.append("Main")
-DRIVES_IDS.append(parent_id)
+DRIVES_IDS.append(PARENT_ID)
 if ospath.exists('drive_folder'):
     with open('drive_folder', 'r+') as f:
         lines = f.readlines()
@@ -351,14 +382,24 @@ if ospath.exists('drive_folder'):
                 INDEX_URLS.append(temp[2])
             else:
                 INDEX_URLS.append(None)
+
+STORAGE_THRESHOLD = environ.get('STORAGE_THRESHOLD', '')
+STORAGE_THRESHOLD = None if len(STORAGE_THRESHOLD) == 0 else float(STORAGE_THRESHOLD)
+
+TORRENT_LIMIT = environ.get('TORRENT_LIMIT', '')
+TORRENT_LIMIT = None if len(TORRENT_LIMIT) == 0 else float(TORRENT_LIMIT)
+
+DIRECT_LIMIT = environ.get('DIRECT_LIMIT', '')
+DIRECT_LIMIT = None if len(DIRECT_LIMIT) == 0 else float(DIRECT_LIMIT)
+
+GDRIVE_LIMIT = environ.get('GDRIVE_LIMIT', '')
+GDRIVE_LIMIT = None if len(GDRIVE_LIMIT) == 0 else float(GDRIVE_LIMIT)
+
 CLONE_LIMIT = environ.get('CLONE_LIMIT', '')
 CLONE_LIMIT = None if len(CLONE_LIMIT) == 0 else float(CLONE_LIMIT)
 
 MEGA_LIMIT = environ.get('MEGA_LIMIT', '')
 MEGA_LIMIT = None if len(MEGA_LIMIT) == 0 else float(MEGA_LIMIT)
-
-STORAGE_THRESHOLD = environ.get('STORAGE_THRESHOLD', '')
-STORAGE_THRESHOLD = None if len(STORAGE_THRESHOLD) == 0 else float(STORAGE_THRESHOLD)
 
 LEECH_LIMIT = environ.get('LEECH_LIMIT', '')
 LEECH_LIMIT = None if len(LEECH_LIMIT) == 0 else float(LEECH_LIMIT)
@@ -396,20 +437,32 @@ ENABLE_MESSAGE_FILTER = ENABLE_MESSAGE_FILTER.lower() == 'true'
 
 STOP_DUPLICATE_TASKS = environ.get('STOP_DUPLICATE_TASKS', '')
 STOP_DUPLICATE_TASKS = STOP_DUPLICATE_TASKS.lower() == 'true'
-SHARER_DRIVE_SITE = environ.get('SHARER_DRIVE_SITE', '')
+
+SHARER_DRIVE_SITE = environ.get('SHARER_DRIVE_SITE', '').rstrip("/")
 if len(SHARER_DRIVE_SITE) == 0:
     SHARER_DRIVE_SITE = None
+
 ENABLE_SHARER_LIST = environ.get('ENABLE_SHARER_LIST', '')
 ENABLE_SHARER_LIST = ENABLE_SHARER_LIST.lower() == 'true'
 
 DISABLE_DRIVE_LINK = environ.get('DISABLE_DRIVE_LINK', '')
 DISABLE_DRIVE_LINK = DISABLE_DRIVE_LINK.lower() == 'true'
 
+SET_COMMANDS = environ.get('SET_COMMANDS', '')
+SET_COMMANDS = SET_COMMANDS.lower() == 'true'
+
 SHORTENER = environ.get('SHORTENER', '')
 SHORTENER_API = environ.get('SHORTENER_API', '')
 if len(SHORTENER) == 0 or len(SHORTENER_API) == 0:
     SHORTENER = None
     SHORTENER_API = None
+
+MIRROR_LOG = environ.get('MIRROR_LOG', '')
+if len(MIRROR_LOG) != 0 and not MIRROR_LOG.startswith('-100') or len(MIRROR_LOG) == 0:
+    MIRROR_LOG = None
+else:
+    MIRROR_LOG = int(MIRROR_LOG)
+
 FSUB_IDS = set()
 fsubid = environ.get('FSUB_IDS', '')
 for f_id in fsubid.split():
@@ -419,6 +472,7 @@ for f_id in fsubid.split():
         FSUB_IDS.add(int(f_id))
     except:
         pass
+
 updater = tgUpdater(token=BOT_TOKEN, request_kwargs={'read_timeout': 20, 'connect_timeout': 15})
 bot = updater.bot
 dispatcher = updater.dispatcher
