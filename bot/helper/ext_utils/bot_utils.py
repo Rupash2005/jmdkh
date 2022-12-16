@@ -1,23 +1,19 @@
-from html import escape
-from math import ceil
-from re import findall
-from threading import Event, Thread
+from re import findall as re_findall
+from threading import Thread, Event
 from time import time
-from urllib.parse import urlparse
+from math import ceil
+from html import escape
+from psutil import disk_usage, cpu_percent, virtual_memory
+from requests import head as rhead
 from urllib.request import urlopen
+from urllib.parse import urlparse
 
-from psutil import cpu_percent, disk_usage, virtual_memory
-from requests import request
-
-from bot import (BUTTON_NAMES, BUTTON_URLS, CATEGORY_NAMES, DOWNLOAD_DIR,
-                 botStartTime, btn_listener, config_dict, download_dict,
-                 download_dict_lock, user_data)
+from bot import download_dict, download_dict_lock, botStartTime, DOWNLOAD_DIR, user_data, config_dict
 from bot.helper.telegram_helper.bot_commands import BotCommands
 from bot.helper.telegram_helper.button_build import ButtonMaker
 
 MAGNET_REGEX = r"magnet:\?xt=urn:btih:[a-zA-Z0-9]*"
-
-URL_REGEX = r"(?:(?:https?|ftp):\/\/)?[\w/\-?=%.]+\.[\w/\-?=%.]+"
+PROGRESS_INCOMPLETE = ['○','◔', '◑', '◕', '⬤', '○','◔', '◑', '◕','⬤']
 
 COUNT = 0
 PAGE_NO = 1
@@ -25,17 +21,17 @@ PAGES = 0
 
 
 class MirrorStatus:
-    STATUS_UPLOADING = "Upload"
-    STATUS_DOWNLOADING = "Download"
-    STATUS_CLONING = "Clone"
-    STATUS_WAITING = "Queue"
-    STATUS_PAUSED = "Pause"
-    STATUS_ARCHIVING = "Archive"
-    STATUS_EXTRACTING = "Extract"
-    STATUS_SPLITTING = "Split"
-    STATUS_CHECKING = "CheckUp"
-    STATUS_SEEDING = "Seed"
-    STATUS_CONVERTING = "Convert"
+    STATUS_UPLOADING = "Uploading..."
+    STATUS_DOWNLOADING = "Downloading..."
+    STATUS_CLONING = "Cloning..."
+    STATUS_WAITING = "Queued..."
+    STATUS_PAUSED = "Paused..."
+    STATUS_ARCHIVING = "Archiving..."
+    STATUS_EXTRACTING = "Extracting..."
+    STATUS_SPLITTING = "Splitting..."
+    STATUS_CHECKING = "CheckingUp..."
+    STATUS_SEEDING = "Seeding..."
+    STATUS_CONVERTING = "Converting..."
 
 SIZE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
 
@@ -111,14 +107,18 @@ def bt_selection_buttons(id_: str, isCanCncl: bool = True):
     return buttons.build_menu(2)
 
 def get_progress_bar_string(status):
-    completed = status.processed_bytes() / 8
-    total = status.size_raw() / 8
+    completed = status.processed_bytes() / 9
+    total = status.size_raw() / 9
     p = 0 if total == 0 else round(completed * 100 / total)
     p = min(max(p, 0), 100)
-    cFull = p // 8
-    p_str = '■' * cFull
-    p_str += '□' * (12 - cFull)
-    return f"[{p_str}]"
+    cFull = p // 9
+    cPart = p % 9 - 1
+    p_str = "⬤" * cFull
+    if cPart >= 0:
+        p_str += PROGRESS_INCOMPLETE[cPart]
+    p_str += "○" * (11 - cFull)
+    p_str = f"「{p_str}」"
+    return p_str
 
 def get_readable_message():
     with download_dict_lock:
@@ -131,7 +131,8 @@ def get_readable_message():
                 globals()['COUNT'] -= STATUS_LIMIT
                 globals()['PAGE_NO'] -= 1
         for index, download in enumerate(list(download_dict.values())[COUNT:], start=1):
-            msg += f"<b>{download.status()}</b>: <code>{escape(str(download.name()))}</code>"
+            msg += f"<code>{escape(str(download.name()))}</code>"
+            msg += f"\n<b>Status</b>: <i>{download.status()}</i>"
             if download.status() not in [MirrorStatus.STATUS_SPLITTING, MirrorStatus.STATUS_SEEDING, MirrorStatus.STATUS_CONVERTING]:
                 msg += f"\n{get_progress_bar_string(download)} {download.progress()}"
                 msg += f"\n<b>Processed</b>: {get_readable_file_size(download.processed_bytes())} of {download.size()}"
@@ -153,13 +154,14 @@ def get_readable_message():
             msg += f"\n<b>Elapsed</b>: {get_readable_time(time() - download.message.date.timestamp())}"
             if hasattr(download, 'playList'):
                 try:
-                    if playlist:=download.playList():
+                    playlist = download.playList()
+                    if playlist:
                         msg += f"\n<b>Playlist</b>: {playlist}"
                 except:
                     pass
             msg += f"\n<b>Engine</b>: {download.engine()}"
             msg += f"\n<b>Upload</b>: {download.mode()}"
-            msg += f"\n<b>Stop</b>: <code>/{BotCommands.CancelMirror} {download.gid()}</code>"
+            msg += f"\n/{BotCommands.CancelMirror}_{download.gid()}"
             msg += "\n\n"
             if STATUS_LIMIT and index == STATUS_LIMIT:
                 break
@@ -186,39 +188,17 @@ def get_readable_message():
                     up_speed += float(spd.split('K')[0]) * 1024
                 elif 'M' in spd:
                     up_speed += float(spd.split('M')[0]) * 1048576
-        bmsg = f"<b>CPU</b>: {cpu_percent()}% | <b>FREE</b>: {get_readable_file_size(disk_usage(DOWNLOAD_DIR).free)}"
-        bmsg += f"\n<b>RAM</b>: {virtual_memory().percent}% | <b>UPTIME</b>: {get_readable_time(time() - botStartTime)}"
+        bmsg = f"<b>Cpu</b>: {cpu_percent()}% | <b>Free</b>: {get_readable_file_size(disk_usage(DOWNLOAD_DIR).free)}"
+        bmsg += f"\n<b>Ram</b>: {virtual_memory().percent}% | <b>Uptime</b>: {get_readable_time(time() - botStartTime)}"
         bmsg += f"\n<b>DL</b>: {get_readable_file_size(dl_speed)}/s | <b>UL</b>: {get_readable_file_size(up_speed)}/s"
         if STATUS_LIMIT and tasks > STATUS_LIMIT:
-            return _get_readable_message_btns(msg, bmsg)
-        return msg + bmsg, None
-
-
-def _get_readable_message_btns(msg, bmsg):
-    buttons = ButtonMaker()
-    buttons.sbutton("<<", "status pre")
-    buttons.sbutton(f"{PAGE_NO}/{PAGES} ♻️", "status ref")
-    buttons.sbutton(">>", "status nex")
-    button = buttons.build_menu(3)
-    return msg + bmsg, button
-
-def get_category_btns(query_data, time_out, msg_id, c_index):
-    text = '<b>Select the category where you want to upload</b>'
-    text += f'\n<b>Upload</b>: to Drive in {CATEGORY_NAMES[c_index]} folder'
-    text += f'<u>\n\nYou have {get_readable_time(time_out)} to select the mode</u>'
-    button = ButtonMaker()
-    for i, _name in enumerate(CATEGORY_NAMES):
-        button.sbutton(f'{_name}{" ✅" if _name == CATEGORY_NAMES[c_index] else ""}', f'{query_data} scat {msg_id} {i}')
-    button.sbutton('Cancel', f"{query_data} cancel {msg_id}", 'footer')
-    button.sbutton(f'Start ({get_readable_time(time_out)})', f'{query_data} start {msg_id}', 'footer')
-    return text, button.build_menu(3)
-
-def extra_btns(buttons):
-    if BUTTON_NAMES and BUTTON_URLS:
-        for btn_name, btn_url in zip(BUTTON_NAMES, BUTTON_URLS):
-            buttons.buildbutton(btn_name, btn_url)
-    return buttons
-
+            buttons = ButtonMaker()
+            buttons.sbutton("<<", "status pre")
+            buttons.sbutton(f"{PAGE_NO}/{PAGES} ♻️", "status ref")
+            buttons.sbutton(">>", "status nex")
+            button = buttons.build_menu(3)
+            return msg + bmsg, button
+        return msg + bmsg, ""
 def turn(data):
     STATUS_LIMIT = config_dict['STATUS_LIMIT']
     try:
@@ -242,14 +222,6 @@ def turn(data):
     except:
         return False
 
-def check_user_tasks(user_id, maxtask):
-    if tasks:= getAllDownload(MirrorStatus.STATUS_DOWNLOADING, user_id, False):
-        return len(tasks) >= maxtask
-
-def check_buttons():
-    if len(btn_listener) >= 3:
-        return 'Sorry, I can only handle 3 tasks at a time.'
-
 def get_readable_time(seconds: int) -> str:
     result = ''
     (days, remainder) = divmod(seconds, 86400)
@@ -269,15 +241,27 @@ def get_readable_time(seconds: int) -> str:
     return result
 
 def is_url(url: str):
-    url = findall(URL_REGEX, url)
-    return bool(url)
+    try:
+        return urlparse(url).scheme in ['http','https', 'ftp']
+    except:
+        return False
 
 def is_gdrive_link(url: str):
-    return "drive.google.com" in urlparse(url).netloc
+    url_ = urlparse(url)
+    if url_.scheme in ['http','https']:
+        return "drive.google.com" in url_.netloc
+    return False
+
+def is_sharer_link(url: str):
+    url_ = urlparse(url)
+    if url_.scheme in ['http','https']:
+        return any(x in url_.netloc for x in ['gdtot', 'appdrive', 'driveapp', 'hubdrive'])
+    return False
 
 def is_mega_link(url: str):
     url_ = urlparse(url)
-    return any(x in url_.netloc for x in ['mega.nz', 'mega.co.nz'])
+    if url_.scheme in ['http','https']:
+        return any(x in url_.netloc for x in ['mega.nz', 'mega.co.nz'])
 
 def get_mega_link_type(url: str):
     if "folder" in url:
@@ -289,7 +273,7 @@ def get_mega_link_type(url: str):
     return "file"
 
 def is_magnet(url: str):
-    magnet = findall(MAGNET_REGEX, url)
+    magnet = re_findall(MAGNET_REGEX, url)
     return bool(magnet)
 
 def new_thread(fn):
@@ -306,7 +290,7 @@ def new_thread(fn):
 
 def get_content_type(link: str) -> str:
     try:
-        res = request('HEAD', link, allow_redirects=True, timeout=5, headers = {'user-agent': 'Wget/1.12'})
+        res = rhead(link, allow_redirects=True, timeout=5, headers = {'user-agent': 'Wget/1.12'})
         content_type = res.headers.get('content-type')
     except:
         try:
@@ -326,33 +310,18 @@ def update_user_ldata(id_, key, value):
 def set_commands(bot):
     if config_dict['SET_COMMANDS']:
         bot.set_my_commands([
-        (f'{BotCommands.MirrorCommand[0]}', f'or /{BotCommands.MirrorCommand[1]} Mirror'),
-        (f'{BotCommands.LeechCommand[0]}', f'or /{BotCommands.LeechCommand[1]} Leech'),
-        (f'{BotCommands.ZipMirrorCommand[0]}', f'or /{BotCommands.ZipMirrorCommand[1]} Mirror and upload as zip'),
-        (f'{BotCommands.ZipLeechCommand[0]}', f'or /{BotCommands.ZipLeechCommand[1]} Leech and upload as zip'),
-        (f'{BotCommands.UnzipMirrorCommand[0]}', f'or /{BotCommands.UnzipMirrorCommand[1]} Mirror and extract files'),
-        (f'{BotCommands.UnzipLeechCommand[0]}', f'or /{BotCommands.UnzipLeechCommand[1]} Leech and extract files'),
-        (f'{BotCommands.QbMirrorCommand[0]}', f'or /{BotCommands.QbMirrorCommand[1]} Mirror torrent using qBittorrent'),
-        (f'{BotCommands.QbLeechCommand[0]}', f'or /{BotCommands.QbLeechCommand[1]} Leech torrent using qBittorrent'),
-        (f'{BotCommands.QbZipMirrorCommand[0]}', f'or /{BotCommands.QbZipMirrorCommand[1]} Mirror torrent and upload as zip using qb'),
-        (f'{BotCommands.QbZipLeechCommand[0]}', f'or /{BotCommands.QbZipLeechCommand[1]} Leech torrent and upload as zip using qb'),
-        (f'{BotCommands.QbUnzipMirrorCommand[0]}', f'or /{BotCommands.QbUnzipMirrorCommand[1]} Mirror torrent and extract files using qb'),
-        (f'{BotCommands.QbUnzipLeechCommand[0]}', f'or /{BotCommands.QbUnzipLeechCommand[1]} Leech torrent and extract using qb'),
-        (f'{BotCommands.YtdlCommand[0]}', f'or /{BotCommands.YtdlCommand[1]} Mirror yt-dlp supported link'),
-        (f'{BotCommands.YtdlLeechCommand[0]}', f'or /{BotCommands.YtdlLeechCommand[1]} Leech through yt-dlp supported link'),
-        (f'{BotCommands.YtdlZipCommand[0]}', f'or /{BotCommands.YtdlZipCommand[1]} Mirror yt-dlp supported link as zip'),
-        (f'{BotCommands.YtdlZipLeechCommand[0]}', f'or /{BotCommands.YtdlZipLeechCommand[1]} Leech yt-dlp support link as zip'),
-        (f'{BotCommands.CloneCommand}', 'Copy file/folder to Drive'),
-        (f'{BotCommands.StatusCommand[0]}', f'or /{BotCommands.StatusCommand[1]} Get mirror status message'),
-        (f'{BotCommands.StatsCommand}', 'Check bot stats'),
-        (f'{BotCommands.BtSelectCommand}', 'Select files to download only torrents'),
-        (f'{BotCommands.CategorySelect}', 'Select category to upload only mirror'),
-        (f'{BotCommands.CancelMirror}', 'Cancel a Task'),
-        (f'{BotCommands.CancelAllCommand}', 'Cancel all tasks which added by you'),
-        (f'{BotCommands.ListCommand}', 'Search in Drive'),
-        (f'{BotCommands.SearchCommand}', 'Search in Torrent'),
-        (f'{BotCommands.UserSetCommand}', 'Users settings'),
-        (f'{BotCommands.HelpCommand}', 'Get detailed help'),
+            (f'{BotCommands.HelpCommand}','Get Detailed Help'),
+            (f'{BotCommands.MirrorCommand[0]}', 'Start Mirroring/Leech'),
+            (f'{BotCommands.YtdlCommand[0]}','Mirror/Leech yt-dlp Support Links'),
+            (f'{BotCommands.CloneCommand}','Copy File/folder To GDrive'),
+            (f'{BotCommands.StatusCommand[0]}','Get Mirror Status Message'),
+            (f'{BotCommands.BtSelectCommand}','Select files to download using qb'),
+            (f'{BotCommands.ListCommand[0]}','Searches Files in Drive'),
+            (f'{BotCommands.CancelMirror}','Cancel a Task'),
+            (f'{BotCommands.CancelAllCommand}','Cancel all tasks which added by you'),
+            (f'{BotCommands.UserSetCommand}','Users settings.'),
+            (f'{BotCommands.StatsCommand}','Bot Usage Stats'),
+            (f'{BotCommands.SearchCommand}','For Torrents With Installed (Qbittorrent) Search Plugins')
             ])
     else:
         bot.delete_my_commands()

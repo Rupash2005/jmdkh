@@ -1,18 +1,14 @@
-from threading import Lock, Thread
-from time import sleep
-
 from feedparser import parse as feedparse
-from telegram.ext import CallbackQueryHandler, CommandHandler
+from time import sleep
+from telegram.ext import CommandHandler, CallbackQueryHandler
+from threading import Lock, Thread
 
-from bot import (DATABASE_URL, LOGGER, RSS_CHAT_ID, RSS_DELAY, config_dict,
-                 dispatcher, job_queue, rss_dict)
-from bot.helper.ext_utils.db_handler import DbManger
-from bot.helper.telegram_helper.bot_commands import BotCommands
-from bot.helper.telegram_helper.button_build import ButtonMaker
+from bot import dispatcher, job_queue, rss_dict, LOGGER, DATABASE_URL, config_dict, RSS_DELAY, RSS_CHAT_ID
+from bot.helper.telegram_helper.message_utils import sendMessage, editMessage, sendMarkup, auto_delete_message, sendRss
 from bot.helper.telegram_helper.filters import CustomFilters
-from bot.helper.telegram_helper.message_utils import (auto_delete_message,
-                                                      editMessage, sendMessage,
-                                                      sendRss)
+from bot.helper.telegram_helper.bot_commands import BotCommands
+from bot.helper.ext_utils.db_handler import DbManger
+from bot.helper.telegram_helper.button_build import ButtonMaker
 
 rss_dict_lock = Lock()
 
@@ -60,7 +56,7 @@ def rss_sub(update, context):
         title = args[1].strip()
         feed_link = args[2].strip()
         f_lists = []
-        filters = None
+
         if len(args) == 4:
             filters = args[3].lstrip().lower()
             if filters.startswith('f: '):
@@ -71,6 +67,8 @@ def rss_sub(update, context):
                    f_lists.append(y)
             else:
                 filters = None
+        else:
+            filters = None
 
         exists = rss_dict.get(title)
         if exists:
@@ -143,7 +141,7 @@ def rss_settings(update, context):
     if config_dict['AUTO_DELETE_MESSAGE_DURATION'] == -1:
         buttons.sbutton("Close", "rss close")
     button = buttons.build_menu(1)
-    setting = sendMessage('Rss Settings', context.bot, update.message, button)
+    setting = sendMarkup('Rss Settings', context.bot, update.message, button)
     Thread(target=auto_delete_message, args=(context.bot, update.message, setting)).start()
 
 def rss_set_update(update, context):
@@ -202,8 +200,8 @@ def rss_monitor(context):
                     LOGGER.warning(f"Reached Max index no. {feed_count} for this feed: {title}. Maybe you need to use less RSS_DELAY to not miss some torrents")
                     break
                 parse = True
-                for flist in data['filters']:
-                    if all(x not in str(rss_d.entries[feed_count]['title']).lower() for x in flist):
+                for list in data['filters']:
+                    if all(x not in str(rss_d.entries[feed_count]['title']).lower() for x in list):
                         parse = False
                         feed_count += 1
                         break
@@ -234,16 +232,16 @@ def rss_monitor(context):
 
 if DATABASE_URL and RSS_CHAT_ID:
     rss_list_handler = CommandHandler(BotCommands.RssListCommand, rss_list,
-                                      filters=CustomFilters.owner_filter | CustomFilters.sudo_user)
+                                      filters=CustomFilters.owner_filter | CustomFilters.sudo_user, run_async=True)
     rss_get_handler = CommandHandler(BotCommands.RssGetCommand, rss_get,
-                                      filters=CustomFilters.owner_filter | CustomFilters.sudo_user)
+                                      filters=CustomFilters.owner_filter | CustomFilters.sudo_user, run_async=True)
     rss_sub_handler = CommandHandler(BotCommands.RssSubCommand, rss_sub,
-                                      filters=CustomFilters.owner_filter | CustomFilters.sudo_user)
+                                      filters=CustomFilters.owner_filter | CustomFilters.sudo_user, run_async=True)
     rss_unsub_handler = CommandHandler(BotCommands.RssUnSubCommand, rss_unsub,
-                                      filters=CustomFilters.owner_filter | CustomFilters.sudo_user)
+                                      filters=CustomFilters.owner_filter | CustomFilters.sudo_user, run_async=True)
     rss_settings_handler = CommandHandler(BotCommands.RssSettingsCommand, rss_settings,
-                                      filters=CustomFilters.owner_filter | CustomFilters.sudo_user)
-    rss_buttons_handler = CallbackQueryHandler(rss_set_update, pattern="rss")
+                                      filters=CustomFilters.owner_filter | CustomFilters.sudo_user, run_async=True)
+    rss_buttons_handler = CallbackQueryHandler(rss_set_update, pattern="rss", run_async=True)
 
     dispatcher.add_handler(rss_list_handler)
     dispatcher.add_handler(rss_get_handler)

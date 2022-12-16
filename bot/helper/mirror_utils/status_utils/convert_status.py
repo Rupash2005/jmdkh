@@ -1,5 +1,5 @@
-from bot.helper.ext_utils.bot_utils import MirrorStatus, get_readable_file_size
-
+from bot import LOGGER
+from bot.helper.ext_utils.bot_utils import get_readable_file_size, MirrorStatus
 
 class ConvertStatus:
     def __init__(self, name, size, gid, listener):
@@ -8,6 +8,7 @@ class ConvertStatus:
         self.__size = size
         self.__listener = listener
         self.message = self.__listener.message
+        self.__mode = self.__listener.mode
 
     def gid(self):
         return self.__gid
@@ -46,4 +47,4 @@ class ConvertStatus:
                 or self.message.from_user.id
 
     def mode(self):
-        return self.__listener.mode
+        return self.__mode

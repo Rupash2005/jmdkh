@@ -96,36 +96,7 @@ In each single file there is a major change from base code, it's almost totaly d
 - Extract these filetypes
   > ZIP, RAR, TAR, 7z, ISO, WIM, CAB, GZIP, BZIP2, APM, ARJ, CHM, CPIO, CramFS, DEB, DMG, FAT, HFS, LZH, LZMA, LZMA2, MBR, MSI, MSLZ, NSIS, NTFS, RPM, SquashFS, UDF, VHD, XAR, Z, TAR.XZ
 - Direct links Supported:
-  > mediafire, letsupload.io, hxfile.co, anonfiles.com, bayfiles.com, antfiles, fembed.com, fembed.net, femax20.com, layarkacaxxi.icu, fcdn.stream, sbplay.org, naniplay.com, naniplay.nanime.in, naniplay.nanime.biz, sbembed.com, streamtape.com, streamsb.net, feurl.com, upload.ee, pixeldrain.com, racaty.net, 1fichier.com, 1drv.ms (Only works for file not folder or business account), uptobox.com and solidfiles.com, mdisk.me (using ytdl command), terabox.com (you need to add cookies txt with name) [terabox.txt](https://chrome.google.com/webstore/detail/get-cookiestxt/bgaddhkoddajcdgocldbbfleckgcbcid)
-
-## By [Junedkh](https://github.com/junedkh)
-### Repo is design for big groups
-In each single file there is a major change inspire from base code by my friend [Anasty17](https://github.com/anasty17/mirror-leech-telegram-bot) ❤️.
-
-### Limits
-- Storage threshold limit 
-- Leech limit
-- Clone limit
-- Mega limits
-- Torrent limits
-- Direct download limits
-- YTDLP limits
-- Google drive limits
-- User task limits
-
-### Group Features
-- Force subscribe module
-- Chat restrictions
-- Message filters
-- Bot DM support
-- Stop duplicate tasks
-- Enable/Disable drive links
-- Enable/Disable leech function
-- Mirror/Clone log chat
-
-
-### Extra
-- Category wise drive uploads - [Click Here](https://github.com/junedkh/jmdkh-mltb#multi-category-ids) for more info.
+  >mediafire, letsupload.io, hxfile.co, anonfiles.com, bayfiles.com, antfiles, fembed.com, fembed.net, femax20.com, layarkacaxxi.icu, fcdn.stream, sbplay.org, naniplay.com, naniplay.nanime.in, naniplay.nanime.biz, sbembed.com, streamtape.com, streamsb.net, feurl.com, upload.ee, pixeldrain.com, racaty.net, 1fichier.com, 1drv.ms (Only works for file not folder or business account), uptobox.com and solidfiles.com
 
 # How to deploy?
 
@@ -167,7 +138,7 @@ cp config_sample.env config.env
 ```
 _____REMOVE_THIS_LINE_____=True
 ```
-Fill up rest of the fields. Meaning of each field is discussed below. **NOTE**: All values must be filled between quotes, even if it's `Int`, `Bool` or `List`.
+Fill up rest of the fields. Meaning of each field is discussed below. **NOTE**: All values must be filled between quotes, even if `Int` or `Bool`.
 
 **1. Required Fields**
 
@@ -183,7 +154,7 @@ Fill up rest of the fields. Meaning of each field is discussed below. **NOTE**: 
 - `DOWNLOAD_DIR`: The path to the local folder where the downloads should be downloaded to. `Str`
 - `DOWNLOAD_STATUS_UPDATE_INTERVAL`: Time in seconds after which the progress/status message will be updated. Recommended `10` seconds at least. `Int`
 - `AUTO_DELETE_MESSAGE_DURATION`: Interval of time (in seconds), after which the bot deletes it's message and command message which is expected to be viewed instantly. **NOTE**: Set to `-1` to disable auto message deletion. `Int`
-- `DATABASE_URL`: Your Mongo Database URL (Connection string). Follow this [Generate Database](#generate-database) to generate database. Data will be saved in Database: auth and sudo users, users settings including thumbnails for each user, rss data and incomplete tasks. **NOTE**: You can always edit all settings that saved in database from the official site -> (Browse collections). `Str`
+- `DATABASE_URL`: Your Mongo Database URL (Connection string). Follow this [Generate Database](#generate-database) to generate database. Data will be saved in Database: auth and sudo users, users settings including thumbnails for each user, rss data and incomplete tasks. `Str`
 - `AUTHORIZED_CHATS`: Fill user_id and chat_id of groups/users you want to authorize. Separate them by space. `Str`
 - `SUDO_USERS`: Fill user_id of users whom you want to give sudo permission. Separate them by space. `Str`
 - `IGNORE_PENDING_REQUESTS`: Ignore pending requests after restart. Default is `False`. `Bool`
@@ -191,7 +162,7 @@ Fill up rest of the fields. Meaning of each field is discussed below. **NOTE**: 
 - `INDEX_URL`: Refer to https://gitlab.com/ParveenBhadooOfficial/Google-Drive-Index. `Str`
 - `STATUS_LIMIT`: Limit the no. of tasks shown in status message with buttons. **NOTE**: Recommended limit is `4` tasks. `Str`
 - `STOP_DUPLICATE`: Bot will check file in Drive, if it is present in Drive, downloading or cloning will be stopped. (**NOTE**: File will be checked using filename not file hash, so this feature is not perfect yet). Default is `False`. `Bool`
-- `CMD_SUFFIX`: commands index number. This number will added at the end all commands. `Str`
+- `CMD_PERFIX`: commands index number. This number will added at the end all commands. `Str`
 - `TORRENT_TIMEOUT`: Timeout of dead torrents downloading with qBittorrent and Aria2c in seconds. `Str`
 - `EXTENSION_FILTER`: File extensions that won't upload/clone. Separate them by space. `Str`
 - `INCOMPLETE_TASK_NOTIFIER`: Get incomplete task messages after restart. Require database and superGroup. Default is `False`. `Bool`
@@ -207,13 +178,14 @@ Fill up rest of the fields. Meaning of each field is discussed below. **NOTE**: 
 - `LEECH_SPLIT_SIZE`: Size of split in bytes. Default is `2GB`. Default is `4GB` if your account is premium. `Str`
 - `AS_DOCUMENT`: Default type of Telegram file upload. Default is `False` mean as media. `Bool`
 - `EQUAL_SPLITS`: Split files larger than **LEECH_SPLIT_SIZE** into equal parts size (Not working with zip cmd). Default is `False`. `Bool`
-- `DUMP_CHAT`: Chat ID. Upload files to specific chat. `Str`. **NOTE**: Only available for superGroup/channel. Add `-100` before channel/superGroup id. In short don't add bot id or your id!
-- `USER_SESSION_STRING`: To download/upload from your telegram account. If you own premium account. To generate session string use this command `python3 generate_string_session.py` after mounting repo folder for sure. `Str`. **NOTE**: You can't use bot in private chat. Use it with superGroup.
+- `LEECH_FILENAME_PERFIX`: Add custom word to leeched file name. `Str`
+- `DUMP_CHAT`: Chat ID. Upload files to specific chat. `str`. **NOTE**: Only available for superGroup/channel. Add `-100` before channel/superGroup id. In short don't add bot id or your id!
+- `USER_SESSION_STRING`: To download/upload from your telegram account. If you own premium account. To generate session string use this command `python3 generate_string_session.py` after mounting repo folder for sure. `Str`. **NOTE**: You can't use bot with private message. Use it with superGroup.
 
 ### qBittorrent/Aria2c
-- `BASE_URL`: Valid BASE URL where the bot is deployed to use qbittorrent web selection. Format of URL should be `http://myip`, where `myip` is the IP/Domain(public) of your bot or if you have chosen port other than `80` so write it in this format `http://myip:port` (`http` and not `https`). `Str`
+- `BASE_URL_OF_BOT`: Valid BASE URL where the bot is deployed to use qbittorrent web selection. Format of URL should be `http://myip`, where `myip` is the IP/Domain(public) of your bot or if you have chosen port other than `80` so write it in this format `http://myip:port` (`http` and not `https`). This Var is optional on VPS and required for Heroku specially to avoid app sleeping/idling. For Heroku fill `https://yourappname.herokuapp.com`. Still got idling? You can use http://cron-job.org to ping your Heroku app. `Str`
 - `SERVER_PORT`: Only For VPS, which is the **BASE_URL_OF_BOT** Port. `Str`
-- `WEB_PINCODE`: If empty or `False` means no more pincode required while torrent files web selection. `Bool`
+- `WEB_PINCODE`: If empty or `False` means no more pincode required while qbit web selection. `Bool`
   - **Qbittorrent NOTE**: If your facing ram exceeded issue then set limit for `MaxConnecs`, decrease `AsyncIOThreadsCount` in qbittorrent config and set limit of `DiskWriteCacheSize` to `32`.
 
 ### RSS
@@ -234,48 +206,65 @@ Fill up rest of the fields. Meaning of each field is discussed below. **NOTE**: 
 ### Torrent Search
 - `SEARCH_API_LINK`: Search api app link. Get your api from deploying this [repository](https://github.com/Ryuk-me/Torrent-Api-py). `Str`
   - Supported Sites:
-    > is dynamic and depend on `http://example.com/api/v1/sites` this endpoint
-- `SEARCH_LIMIT`: Search limit for search api, limit for each site and not overall result limit. Default is zero (Default api limit for each site). `Int`
-- `SEARCH_PLUGINS`: List of qBittorrent search plugins (github raw links). I have added some plugins, you can remove/add plugins as you want. Main Source: [qBittorrent Search Plugins (Official/Unofficial)](https://github.com/qbittorrent/search-plugins/wiki/Unofficial-search-plugins). `List`
+    > is dynamic and depend on `https://example.com/api/v1/sites` this endpoint
+- `SEARCH_LIMIT`: Search limit for search api, limit for each site and not overall result limit. Default is zero (Default api limit for each site). `Str`
+- `SEARCH_PLUGINS`: List of qBittorrent search plugins (github raw links). I have added some plugins, you can remove/add plugins as you want. Main Source: [qBittorrent Search Plugins (Official/Unofficial)](https://github.com/qbittorrent/search-plugins/wiki/Unofficial-search-plugins). `Str`
+
+## By [Junedkh](https://github.com/junedkh)
+In each single file there is a major change inspire from base code by my friend [Anasty17](https://github.com/anasty17/mirror-leech-telegram-bot) ❤️, it's almost not totaly different but. Here some of features which i hide it in .so files.
+
+# Repo is design for big groups
+
+### Button Timeout
+- `BUTTON_TIMEOUT`: To timeout for downloading automatically start. `Str`
 
 ### Limits
 - `STORAGE_THRESHOLD`: To leave specific storage free and any download will lead to leave free storage less than this value will be cancelled. Don't add unit, the default unit is `GB`.
+  - Q. Why STORAGE_THRESHOLD only.
+  - A. This is best and enough for all limits for groups.
 - `LEECH_LIMIT`:  To limit the Torrent/Direct/ytdlp leech size. Don't add unit, the default unit is `GB`.
-- `MAX_PLAYLIST`: To limit number of files for ytdlp playlist in leech mode. `Int`
+- `MAX_PLAYLIST`: To limit the ytdlp playlist in leech mode. `Str`
 - `CLONE_LIMIT`: To limit the size of Google Drive folder/file which you can clone. Don't add unit, the default unit is `GB`.
 - `MEGA_LIMIT`: To limit the size of Mega download. Don't add unit, the default unit is `GB`.
 - `TORRENT_LIMIT`: To limit the size of torrent download. Don't add unit, the default unit is `GB`.
 - `DIRECT_LIMIT`: To limit the size of direct link download. Don't add unit, the default unit is `GB`.
 - `YTDLP_LIMIT`: To limit the size of ytdlp download. Don't add unit, the default unit is `GB`.
-- `GDRIVE_LIMIT`: To limit the size of Google Drive folder/file link for leech, Zip, Unzip. Don't add unit, the default unit is `GB`.
+- `GDRIVE_LIMIT`: To limit the size of Google Drive folder/file which you can use for leech etc. Don't add unit, the default unit is `GB`.
+### Sharer Drive
+- `GDTOT_CRYPT`: To download/clone gdtot link. `Str`
+- `SHARER_EMAIL`: youremail@gmail.com `Str`
+- `SHARER_PASS`: yourpassword_which_you_create_from `Str`
+  - Currently Supported Sites:
+    > appdrive, driveapp, hubdrive
+  - Will add more in future on public demand.
+  - **Note**: Must change account password from supported sharer [account](https://appdrive.info/account) settings. same email and same password.
+- `SHARER_DRIVE_SITE`: To enable upload sharer drive just add website like `https://appdrive.info`. `Str`
+  - **Note**: Must added `SHARER_EMAIL` and `SHARER_PASS`
+- `ENABLE_SHARER_LIST`: To enable gdflix upload link while using `/list_drive` cmd. Default is `False`. `Bool`
+  - **Note**: it will make slower your /list_drive command. or may sharer drive account suspend due to mess link genrating.
 
 ### Group Features
-- `FSUB_IDS`: Fill chat_id of groups/channel you want to force subscribe. Separate them by space. `Int`
+- `FSUB_IDS`: Fill chat_id of groups/channel you want to force subscribe. Separate them by space. `Str`
   - it will apply only for member
-  - **Note**: Bot should be added in the filled chat_id as admin.
-- `USER_MAX_TASKS`: Maximum number of tasks for each group members at a time. `Int` 
-- `ENABLE_CHAT_RESTRICT`: To enable restriction when download started. `Bool`
-  - it will restrict the user for 1 minute.
-- `ENABLE_MESSAGE_FILTER`: If enabled then bot will not download files with captions or forwarded. `Bool`
-- `STOP_DUPLICATE_TASKS`: To enable stop duplicate task across multiple bots. `Bool`
-  - **Note**: All bot must have added same database link.
-- `DISABLE_DRIVE_LINK`: To disable google drive link button in case you need it. `Bool`
+- `ENABLE_CHAT_RESTRICT`: To enable restriction when start download
+  - it will restrict until 1 minute apply only for member
+- `ENABLE_MESSAGE_FILTER`: To enable not allow download for message with captions or forwarded (inshort no promotion)
+  - it will apply only for member
+- `STOP_DUPLICATE_TASKS`: To enable stop duplicate task across multiple bots
+  - **Note**: all bot have added same database link.
+- `DISABLE_DRIVE_LINK`: To disable google drive link button in case you need it.
 
 ### Extra Features
 - `SET_COMMANDS`: To set bot commands automatically on every startup. Default is `False`. `Bool`
-  - **Note**: You can set commands manually according to your needs few commands are available [here](#bot-commands-to-be-set-in-botfatherhttpstmebotfather)
-- `DISABLE_LEECH`: It will disable leech functionality. Default is `False`. `Bool`
-- `ENABLE_DM`: If enabled then bot will send Mirrored/Leeched files in user's DM. Default is `False`. `Bool`
-- `DELETE_LINKS`: It will delete links on download start. Default is `False`. `Bool`
-- `LOG_CHAT`: Fill chat_id of the group/channel. It will send mirror/clone links in the log chat. `Int`
-  - **Note**: Bot should be added in the log chat as admin.
-
+  - **Note**: or you can set it manually according to your needs few commands are available [here](#bot-commands-to-be-set-in-botfatherhttpstmebotfather)
+- `MIRROR_LOG`: It will send the message when upload to drive is finished
+  - **Note**: it will not support any shortener
 ------
 
 ### 3. Getting Google OAuth API credential file and token.pickle
 
 **NOTES**
-- Old authentication changed, now we can't use bot or replit to generate token.pickle. You need OS with a local browser. For example `Termux`.
+- Old authentication changed, now we can't use bot or replit to generate token.pickle. You need OS with a browser.
 - Windows users should install python3 and pip. You can find how to install and use them from google or from this [telegraph](https://telegra.ph/Create-Telegram-Mirror-Leech-Bot-by-Deploying-App-with-Heroku-Branch-using-Github-Workflow-12-06) from [Wiszky](https://github.com/vishnoe115) tutorial.
 - You can ONLY open the generated link from `generate_drive_token.py` in local browser.
 
@@ -295,16 +284,22 @@ python3 generate_drive_token.py
 ```
 ------
 
-### 4. Build And Run the Docker Image
+## Deploying on VPS
 
-Make sure you still mount the app folder and installed the docker from official documentation.
-- There are two methods to build and run the docker:
-  1. Using official docker commands.
-  2. Using docker-compose. (Recommended)
-
+**IMPORTANT NOTES**:
+1. You must set `SERVER_PORT` variable to `80` or any other port you want to use.
+2. To clear the container (this will not affect on the image):
+```
+sudo docker container prune
+```
+3. To delete the images:
+```
+sudo docker image prune -a
+```
+4. Check the number of processing units of your machine with `nproc` cmd and times it by 4, then edit `AsyncIOThreadsCount` in qBittorrent.conf.
 ------
 
-#### Build And Run The Docker Image Using Official Docker Commands
+### Deploying on VPS Using Docker
 
 - Start Docker daemon (SKIP if already running):
 ```
@@ -312,13 +307,13 @@ sudo dockerd
 ```
 - Build Docker image:
 ```
-sudo docker build . -t mltb
+sudo docker build . -t mirror-bot
 ```
 - Run the image:
 ```
-sudo docker run -p 80:80 mltb
+sudo docker run -p 80:80 mirror-bot
 ```
-- To stop the running image:
+- To stop the image:
 ```
 sudo docker ps
 ```
@@ -328,14 +323,14 @@ sudo docker stop id
 
 ----
 
-#### Build And Run The Docker Image Using docker-compose
+### Deploying on VPS Using docker-compose
 
 **NOTE**: If you want to use port other than 80, change it in [docker-compose.yml](docker-compose.yml) also.
 
 ```
 sudo apt install -y docker-compose
 ```
-- Build and run Docker image or to view current running image:
+- Build and run Docker image:
 ```
 sudo docker-compose up -d
 ```
@@ -343,7 +338,7 @@ sudo docker-compose up -d
 ```
 sudo docker-compose up --build
 ```
-- To stop the running image:
+- To stop the image:
 ```
 sudo docker-compose stop
 ```
@@ -356,32 +351,16 @@ sudo docker-compose start
 
 ------
 
-#### Docker Notes
-
-**IMPORTANT NOTES**:
-1. You must set `SERVER_PORT` variable to any port you want to use. Default is `80`.
-2. You should stop the running image before deleting the container and you should delete the container before the image.
-3. To delete the container (this will not affect on the image):
-```
-sudo docker container prune
-```
-4. To delete the images:
-```
-sudo docker image prune -a
-```
-5. Check the number of processing units of your machine with `nproc` cmd and times it by 4, then edit `AsyncIOThreadsCount` in qBittorrent.conf.
-
-------
-
 ## UPSTREAM REPO (Recommended)
 
 - `UPSTREAM_REPO` variable can be used for edit/add any file in repository.
 - You can add private/public repository link to grab/overwrite all files from it.
-- You can skip adding the privates files like token.pickle or accounts folder before deploying, simply fill `UPSTREAM_REPO` private one in case you want to grab all files including private files.
-- If you added private files while deploying and you have added private `UPSTREAM_REPO` and your private files in this private repository, so your private files will be overwritten from this repository. Also if you are using database for private files, then all files from database will override the private files that added before deploying or from private `UPSTREAM_REPO`.
+- You can skip adding the privates files like token.pickle or accounts folder before deploying, also no need to add variables direct links except **config.env**, simply fill `UPSTREAM_REPO` private one in case you want to grab all files including private files.
+- If you added private files while deploying and you have added private `UPSTREAM_REPO` and your private files in this private repository, so your private files will be overwritten from this repository. Also if you are using URL variables like `TOKEN_PICKLE_URL` then all files from those variables will override the private files that added before deploying or from private `UPSTREAM_REPO`.
 - If you filled `UPSTREAM_REPO` with the official repository link, then be carefull incase any change in requirements.txt your bot will not start after restart. In this case you need to deploy again with updated code to install the new requirements or simply by changing the `UPSTREAM_REPO` to you fork link with that old updates.
 - In case you you filled `UPSTREAM_REPO` with your fork link be carefull also if you fetched the commits from the official repository.
 - The changes in your `UPSTREAM_REPO` will take affect only after restart.
+- `UPSTREAM_BRANCH` don't ever fill heroku here.
 
 ------
 
@@ -413,9 +392,7 @@ Let us create only the Service Accounts that we need.
 ```
 python3 gen_sa_accounts.py --download-keys $PROJECTID
 ```
->**NOTE:** 1 Service Account can upload/copy around 750 GB a day, 1 project can make 100 Service Accounts so you can upload 75 TB a day.
-
->**NOTE:** All people can copy `2TB/DAY` from each file creator (uploader account), so if you got error `userRateLimitExceeded` that doesn't your limit exceeded but but file creator limit have been exceeded which is `2TB/DAY`.
+>**NOTE:** 1 Service Account can upload/copy around 750 GB a day, 1 project can make 100 Service Accounts so you can upload 75 TB a day or clone 2 TB from each file creator (uploader email).
 
 #### Two methods to create service accounts
 Choose one of these methods
@@ -486,7 +463,6 @@ python3 add_to_team_drive.py -d SharedTeamDriveSrcID
 6. After creating user press on `Choose a connection`, then press on `Connect your application`. Choose `Driver` **python** and `version` **3.6 or later**.
 7. Copy your `connection string` and replace `<password>` with the password of your user, then press close.
 -----
-
 ## Multi Drive List
 To use list from multi TD/folder. Run driveid.py in your terminal and follow it. It will generate **list_drives.txt** file or u can simply create `list_drives.txt` file in working directory and fill it, check below format:
 ```
@@ -500,10 +476,7 @@ TD2 0AO1JDB1t3i5jUk9PVA https://example.dev
 ```
 -----
 ## Multi Category IDs
-
-![image](https://graph.org/file/d8ed66fcb30116010b252.jpg)
-
-To use upload in categorywise TD/folder. Run driveid.py in your terminal and follow it. It will generate **drive_folder** file than rename it to `categories.txt` or u can simply create
+To use upload in categorywise TD/folder. Run driveid.py in your terminal and follow it. It will generate **list_drives.txt** file than rename it to `categories.txt` or u can simply create
 `categories.txt` file in working directory and fill it, check below format:
 ```
 categoryName folderID/tdID IndexLink(if available)
@@ -511,12 +484,10 @@ categoryName folderID/tdID IndexLink(if available)
 ```
 Example:
 ```
-Root 0AO1JDB1t3i5jUk9PVA https://example.dev/0:
+Team_Drive 0AO1JDB1t3i5jUk9PVA https://example.dev/0:
 Movies 1H4w824ZhOt4rs14XPajDja0dAdFp1glI https://example.dev/0:/movies
 Series 1H4w434ZhOt4rs14XPajDja0dAdFp1glI https://example.dev/0:/series
 ```
-Now when you use /mirror or /clone cmd, you will see category options. Using that u can upload files categorywise in TD/Folder.
-
 ## Multi Shortener
 To use multiple shorteners to maintain CPM! it will use random shorteners to generate short links.
 you can simply create `shorteners.txt` file in working directory and fill it, check below format:
@@ -532,7 +503,7 @@ ouo.io LYT0zBn1
 >exe.io, gplinks.in, shrinkme.io, urlshortx.com, shortzon.com, bit.ly, shorte.st, linkvertise.com , ouo.io, adfoc.us, cutt.ly
 -----
 ### Extra Buttons
-- Four buttons are already added, Drive Link, Index Link, Log and View Link, You can add up to four extra buttons if you don't know what are the below entries.
+- Five buttons are already added including Sharer, Drive Link, Index Link, Log and View Link, You can add up to four extra buttons if you don't know what are the below entries.
 You can simply create `buttons.txt` file in working directory and fill it, check below format:
 ```
 button_name button_url
@@ -573,28 +544,12 @@ Where host is the name of extractor (eg. instagram, Twitch). Multiple accounts o
 ## Bot commands to be set in [@BotFather](https://t.me/BotFather)
 
 ```
-mirror - or /m Mirror
-zipmirror - or /zm Mirror and upload as zip
-unzipmirror - or /uzm Mirror and extract files
-qbmirror - or /qm Mirror torrent using qBittorrent
-qbzipmirror - or /qzm Mirror torrent and upload as zip using qb
-qbunzipmirror - or /quzm Mirror torrent and extract files using qb
-leech - or /l Leech
-zipleech - or /zl Leech and upload as zip
-unzipleech - or /uzl Leech and extract files
-qbleech - or /ql Leech torrent using qBittorrent
-qbzipleech - or /qzl Leech torrent and upload as zip using qb
-qbunzipleech - or /quzl Leech torrent and extract using qb
+dl - or /m it will ask you to where you want to upload.
 clone - Copy file/folder to Drive
 count - Count file/folder of Drive
-ytdl - or /y Mirror yt-dlp supported link
-ytdlzip - or /yz Mirror yt-dlp supported link as zip
-ytdlleech - or /yl Leech through yt-dlp supported link
-ytdlzipleech - or /yzl Leech yt-dlp support link as zip
+ytdl - or /y yt-dlp supported link it will ask you to where you want to upload.
 usetting - users settings
-bsetting - bot settings
 status - Get Mirror Status message
-catsel - select Category to upload only mirror
 btsel - select files from torrent
 rsslist - or /rl List all subscribed rss feed info
 rssget - or /rg Get specific No. of links from specific rss feed

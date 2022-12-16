@@ -1,20 +1,17 @@
-from asyncio import get_event_loop
-from faulthandler import enable as faulthandler_enable
-from logging import (INFO, FileHandler, StreamHandler, basicConfig, error,
-                     getLogger, info, warning)
-from os import environ, path, remove
+from logging import getLogger, FileHandler, StreamHandler, INFO, basicConfig, error as log_error, info as log_info, warning as log_warning
 from socket import setdefaulttimeout
-from subprocess import Popen, run
-from threading import Lock, Thread
-from time import sleep, time
-
-from aria2p import API as ariaAPI
-from aria2p import Client as ariaClient
-from dotenv import load_dotenv
-from pymongo import MongoClient
-from pyrogram import Client, enums
+from faulthandler import enable as faulthandler_enable
+from telegram.ext import Updater as tgUpdater
 from qbittorrentapi import Client as qbClient
-from telegram.ext import Updater as tgUpdater, Defaults
+from aria2p import API as ariaAPI, Client as ariaClient
+from os import remove as osremove, path as ospath, environ
+from subprocess import Popen, run as srun
+from time import sleep, time
+from threading import Thread, Lock
+from dotenv import load_dotenv
+from pyrogram import Client, enums
+from asyncio import get_event_loop
+from pymongo import MongoClient
 
 main_loop = get_event_loop()
 
@@ -51,7 +48,7 @@ qbit_options = {}
 
 try:
     if bool(environ.get('_____REMOVE_THIS_LINE_____')):
-        error('The README.md file there to be read! Exiting now!')
+        log_error('The README.md file there to be read! Exiting now!')
         exit()
 except:
     pass
@@ -73,7 +70,7 @@ btn_listener = {}
 
 BOT_TOKEN = environ.get('BOT_TOKEN', '')
 if len(BOT_TOKEN) == 0:
-    error("BOT_TOKEN variable is missing! Exiting now")
+    log_error("BOT_TOKEN variable is missing! Exiting now")
     exit(1)
 
 bot_id = int(BOT_TOKEN.split(':', 1)[0])
@@ -112,26 +109,26 @@ else:
 
 OWNER_ID = environ.get('OWNER_ID', '')
 if len(OWNER_ID) == 0:
-    error("OWNER_ID variable is missing! Exiting now")
+    log_error("OWNER_ID variable is missing! Exiting now")
     exit(1)
 else:
     OWNER_ID = int(OWNER_ID)
 
 TELEGRAM_API = environ.get('TELEGRAM_API', '')
 if len(TELEGRAM_API) == 0:
-    error("TELEGRAM_API variable is missing! Exiting now")
+    log_error("TELEGRAM_API variable is missing! Exiting now")
     exit(1)
 else:
     TELEGRAM_API = int(TELEGRAM_API)
 
 TELEGRAM_HASH = environ.get('TELEGRAM_HASH', '')
 if len(TELEGRAM_HASH) == 0:
-    error("TELEGRAM_HASH variable is missing! Exiting now")
+    log_error("TELEGRAM_HASH variable is missing! Exiting now")
     exit(1)
 
 GDRIVE_ID = environ.get('GDRIVE_ID', '')
 if len(GDRIVE_ID) == 0:
-    warning('GDRIVE_ID not provided!')
+    log_warning('GDRIVE_ID not provided!')
     GDRIVE_ID = ''
 
 DOWNLOAD_DIR = environ.get('DOWNLOAD_DIR', '')
@@ -161,35 +158,33 @@ if len(EXTENSION_FILTER) > 0:
 IS_PREMIUM_USER = False
 USER_SESSION_STRING = environ.get('USER_SESSION_STRING', '')
 if len(USER_SESSION_STRING) == 0:
-    info("Creating client from BOT_TOKEN")
+    log_info("Creating client from BOT_TOKEN")
     app = Client(name='pyrogram', api_id=TELEGRAM_API, api_hash=TELEGRAM_HASH,
                  bot_token=BOT_TOKEN, parse_mode=enums.ParseMode.HTML, no_updates=True)
-    IS_USER_SESSION = False
 else:
-    info("Creating client from USER_SESSION_STRING")
+    log_info("Creating client from USER_SESSION_STRING")
     app = Client(name='pyrogram', api_id=TELEGRAM_API, api_hash=TELEGRAM_HASH,
                  session_string=USER_SESSION_STRING, parse_mode=enums.ParseMode.HTML, no_updates=True)
     with app:
         IS_PREMIUM_USER = app.me.is_premium
-    IS_USER_SESSION = True
 
 RSS_USER_SESSION_STRING = environ.get('RSS_USER_SESSION_STRING', '')
 if len(RSS_USER_SESSION_STRING) == 0:
     rss_session = ''
 else:
-    info("Creating client from RSS_USER_SESSION_STRING")
+    log_info("Creating client from RSS_USER_SESSION_STRING")
     rss_session = Client(name='rss_session', api_id=TELEGRAM_API, api_hash=TELEGRAM_HASH,
                          session_string=RSS_USER_SESSION_STRING, parse_mode=enums.ParseMode.HTML, no_updates=True)
 
 MEGA_API_KEY = environ.get('MEGA_API_KEY', '')
 if len(MEGA_API_KEY) == 0:
-    warning('MEGA API KEY not provided!')
+    log_warning('MEGA API KEY not provided!')
     MEGA_API_KEY = ''
 
 MEGA_EMAIL_ID = environ.get('MEGA_EMAIL_ID', '')
 MEGA_PASSWORD = environ.get('MEGA_PASSWORD', '')
 if len(MEGA_EMAIL_ID) == 0 or len(MEGA_PASSWORD) == 0:
-    warning('MEGA Credentials not provided!')
+    log_warning('MEGA Credentials not provided!')
     MEGA_EMAIL_ID = ''
     MEGA_PASSWORD = ''
 
@@ -209,6 +204,10 @@ RSS_COMMAND = environ.get('RSS_COMMAND', '')
 if len(RSS_COMMAND) == 0:
     RSS_COMMAND = ''
 
+LEECH_FILENAME_PERFIX = environ.get('LEECH_FILENAME_PERFIX', '')
+if len(LEECH_FILENAME_PERFIX) == 0:
+    LEECH_FILENAME_PERFIX = ''
+
 SEARCH_PLUGINS = environ.get('SEARCH_PLUGINS', '')
 if len(SEARCH_PLUGINS) == 0:
     SEARCH_PLUGINS = ''
@@ -221,11 +220,11 @@ if len(LEECH_SPLIT_SIZE) == 0 or int(LEECH_SPLIT_SIZE) > MAX_SPLIT_SIZE:
 else:
     LEECH_SPLIT_SIZE = int(LEECH_SPLIT_SIZE)
 
-DOWNLOAD_STATUS_UPDATE_INTERVAL = environ.get('DOWNLOAD_STATUS_UPDATE_INTERVAL', '')
-if len(DOWNLOAD_STATUS_UPDATE_INTERVAL) == 0:
-    DOWNLOAD_STATUS_UPDATE_INTERVAL = 10
+STATUS_UPDATE_INTERVAL = environ.get('STATUS_UPDATE_INTERVAL', '')
+if len(STATUS_UPDATE_INTERVAL) == 0:
+    STATUS_UPDATE_INTERVAL = 10
 else:
-    DOWNLOAD_STATUS_UPDATE_INTERVAL = int(DOWNLOAD_STATUS_UPDATE_INTERVAL)
+    STATUS_UPDATE_INTERVAL = int(STATUS_UPDATE_INTERVAL)
 
 AUTO_DELETE_MESSAGE_DURATION = environ.get('AUTO_DELETE_MESSAGE_DURATION', '')
 if len(AUTO_DELETE_MESSAGE_DURATION) == 0:
@@ -243,16 +242,10 @@ SEARCH_LIMIT = 0 if len(SEARCH_LIMIT) == 0 else int(SEARCH_LIMIT)
 DUMP_CHAT = environ.get('DUMP_CHAT', '')
 DUMP_CHAT = '' if len(DUMP_CHAT) == 0 else int(DUMP_CHAT)
 
-LOG_CHAT = environ.get('LOG_CHAT', '')
-LOG_CHAT = '' if len(LOG_CHAT) == 0 else int(LOG_CHAT)
-
 STATUS_LIMIT = environ.get('STATUS_LIMIT', '')
 STATUS_LIMIT = '' if len(STATUS_LIMIT) == 0 else int(STATUS_LIMIT)
 
-USER_MAX_TASKS = environ.get('USER_MAX_TASKS', '')
-USER_MAX_TASKS = '' if len(USER_MAX_TASKS) == 0 else int(USER_MAX_TASKS)
-
-CMD_SUFFIX = environ.get('CMD_SUFFIX', '')
+CMD_PERFIX = environ.get('CMD_PERFIX', '')
 
 RSS_CHAT_ID = environ.get('RSS_CHAT_ID', '')
 RSS_CHAT_ID = '' if len(RSS_CHAT_ID) == 0 else int(RSS_CHAT_ID)
@@ -298,7 +291,7 @@ else:
 
 BASE_URL = environ.get('BASE_URL', '').rstrip("/")
 if len(BASE_URL) == 0:
-    warning('BASE_URL not provided!')
+    log_warning('BASE_URL not provided!')
     BASE_URL = ''
 
 UPSTREAM_REPO = environ.get('UPSTREAM_REPO', '')
@@ -336,6 +329,10 @@ LEECH_LIMIT = '' if len(LEECH_LIMIT) == 0 else float(LEECH_LIMIT)
 MAX_PLAYLIST = environ.get('MAX_PLAYLIST', '')
 MAX_PLAYLIST = '' if len(MAX_PLAYLIST) == 0 else int(MAX_PLAYLIST)
 
+GDTOT_CRYPT = environ.get('GDTOT_CRYPT', '')
+if len(GDTOT_CRYPT) == 0:
+    GDTOT_CRYPT = ''
+
 ENABLE_CHAT_RESTRICT = environ.get('ENABLE_CHAT_RESTRICT', '')
 ENABLE_CHAT_RESTRICT = ENABLE_CHAT_RESTRICT.lower() == 'true'
 
@@ -345,36 +342,47 @@ ENABLE_MESSAGE_FILTER = ENABLE_MESSAGE_FILTER.lower() == 'true'
 STOP_DUPLICATE_TASKS = environ.get('STOP_DUPLICATE_TASKS', '')
 STOP_DUPLICATE_TASKS = STOP_DUPLICATE_TASKS.lower() == 'true'
 
+SHARER_EMAIL = environ.get('SHARER_EMAIL', '')
+SHARER_PASS = environ.get('SHARER_PASS', '')
+if len(SHARER_EMAIL) == 0 or len(SHARER_PASS) == 0:
+    SHARER_EMAIL = ''
+    SHARER_PASS = ''
+
+SHARER_DRIVE_SITE = environ.get('SHARER_DRIVE_SITE', '').rstrip("/")
+if len(SHARER_DRIVE_SITE) == 0:
+    SHARER_DRIVE_SITE = ''
+
+ENABLE_SHARER_LIST = environ.get('ENABLE_SHARER_LIST', '')
+ENABLE_SHARER_LIST = ENABLE_SHARER_LIST.lower() == 'true'
+
 DISABLE_DRIVE_LINK = environ.get('DISABLE_DRIVE_LINK', '')
 DISABLE_DRIVE_LINK = DISABLE_DRIVE_LINK.lower() == 'true'
-
-DISABLE_LEECH = environ.get('DISABLE_LEECH', '')
-DISABLE_LEECH = DISABLE_LEECH.lower() == 'true'
 
 SET_COMMANDS = environ.get('SET_COMMANDS', '')
 SET_COMMANDS = SET_COMMANDS.lower() == 'true'
 
-ENABLE_DM = environ.get('ENABLE_DM', '')
-ENABLE_DM = ENABLE_DM.lower() == 'true'
+MIRROR_LOG = environ.get('MIRROR_LOG', '')
+if len(MIRROR_LOG) != 0 and not MIRROR_LOG.startswith('-100') or len(MIRROR_LOG) == 0:
+    MIRROR_LOG = ''
+else:
+    MIRROR_LOG = int(MIRROR_LOG)
 
-DELETE_LINKS = environ.get('DELETE_LINKS', '')
-DELETE_LINKS = DELETE_LINKS.lower() == 'true'
+BUTTON_TIMEOUT = environ.get('BUTTON_TIMEOUT', '')
+BUTTON_TIMEOUT = 30 if len(BUTTON_TIMEOUT) == 0 else int(BUTTON_TIMEOUT)
 
-FSUB_IDS = environ.get('FSUB_IDS', '')
-if len(FSUB_IDS) == 0:
-    FSUB_IDS = ''
+fsubid = environ.get('FSUB_IDS', '')
+FSUB_IDS = {int(_id.strip()) for _id in fsubid.split()} if len(fsubid) != 0 else set()
+
 
 config_dict = {'AS_DOCUMENT': AS_DOCUMENT,
                 'AUTHORIZED_CHATS': AUTHORIZED_CHATS,
-                'FSUB_IDS': FSUB_IDS,
                 'AUTO_DELETE_MESSAGE_DURATION': AUTO_DELETE_MESSAGE_DURATION,
                 'BASE_URL': BASE_URL,
                 'BOT_TOKEN': BOT_TOKEN,
-                'CMD_SUFFIX': CMD_SUFFIX,
+                'CMD_PERFIX': CMD_PERFIX,
                 'DATABASE_URL': DATABASE_URL,
                 'DOWNLOAD_DIR': DOWNLOAD_DIR,
                 'DUMP_CHAT': DUMP_CHAT,
-                'LOG_CHAT': LOG_CHAT,
                 'EQUAL_SPLITS': EQUAL_SPLITS,
                 'EXTENSION_FILTER': EXTENSION_FILTER,
                 'GDRIVE_ID': GDRIVE_ID,
@@ -382,6 +390,7 @@ config_dict = {'AS_DOCUMENT': AS_DOCUMENT,
                 'INCOMPLETE_TASK_NOTIFIER': INCOMPLETE_TASK_NOTIFIER,
                 'INDEX_URL': INDEX_URL,
                 'IS_TEAM_DRIVE': IS_TEAM_DRIVE,
+                'LEECH_FILENAME_PERFIX': LEECH_FILENAME_PERFIX,
                 'LEECH_SPLIT_SIZE': LEECH_SPLIT_SIZE,
                 'MEGA_API_KEY': MEGA_API_KEY,
                 'MEGA_EMAIL_ID': MEGA_EMAIL_ID,
@@ -396,8 +405,7 @@ config_dict = {'AS_DOCUMENT': AS_DOCUMENT,
                 'SEARCH_PLUGINS': SEARCH_PLUGINS,
                 'SERVER_PORT': SERVER_PORT,
                 'STATUS_LIMIT': STATUS_LIMIT,
-                'USER_MAX_TASKS': USER_MAX_TASKS,
-                'DOWNLOAD_STATUS_UPDATE_INTERVAL': DOWNLOAD_STATUS_UPDATE_INTERVAL,
+                'STATUS_UPDATE_INTERVAL': STATUS_UPDATE_INTERVAL,
                 'STOP_DUPLICATE': STOP_DUPLICATE,
                 'SUDO_USERS': SUDO_USERS,
                 'TELEGRAM_API': TELEGRAM_API,
@@ -420,21 +428,25 @@ config_dict = {'AS_DOCUMENT': AS_DOCUMENT,
                 'MEGA_LIMIT': MEGA_LIMIT,
                 'LEECH_LIMIT': LEECH_LIMIT,
                 'MAX_PLAYLIST': MAX_PLAYLIST,
+                'GDTOT_CRYPT': GDTOT_CRYPT,
                 'ENABLE_CHAT_RESTRICT': ENABLE_CHAT_RESTRICT,
                 'ENABLE_MESSAGE_FILTER': ENABLE_MESSAGE_FILTER,
                 'STOP_DUPLICATE_TASKS': STOP_DUPLICATE_TASKS,
+                'SHARER_DRIVE_SITE': SHARER_DRIVE_SITE,
+                'ENABLE_SHARER_LIST': ENABLE_SHARER_LIST,
                 'DISABLE_DRIVE_LINK': DISABLE_DRIVE_LINK,
                 'SET_COMMANDS': SET_COMMANDS,
-                'DISABLE_LEECH': DISABLE_LEECH,
-                'ENABLE_DM': ENABLE_DM,
-                'DELETE_LINKS': DELETE_LINKS}
+                'MIRROR_LOG': MIRROR_LOG,
+                'SHARER_EMAIL': SHARER_EMAIL,
+                'SHARER_PASS': SHARER_PASS,
+                'BUTTON_TIMEOUT': BUTTON_TIMEOUT}
 
 if GDRIVE_ID:
     DRIVES_NAMES.append("Main")
     DRIVES_IDS.append(GDRIVE_ID)
     INDEX_URLS.append(INDEX_URL)
 
-if path.exists('list_drives.txt'):
+if ospath.exists('list_drives.txt'):
     with open('list_drives.txt', 'r+') as f:
         lines = f.readlines()
         for line in lines:
@@ -446,7 +458,7 @@ if path.exists('list_drives.txt'):
             else:
                 INDEX_URLS.append('')
 
-if path.exists('buttons.txt'):
+if ospath.exists('buttons.txt'):
     with open('buttons.txt', 'r+') as f:
         lines = f.readlines()
         for line in lines:
@@ -457,7 +469,7 @@ if path.exists('buttons.txt'):
                 BUTTON_NAMES.append(temp[0].replace("_", " "))
                 BUTTON_URLS.append(temp[1])
 
-if path.exists('shorteners.txt'):
+if ospath.exists('shorteners.txt'):
     with open('shorteners.txt', 'r+') as f:
         lines = f.readlines()
         for line in lines:
@@ -471,7 +483,7 @@ if GDRIVE_ID:
     CATEGORY_IDS.append(GDRIVE_ID)
     CATEGORY_INDEXS.append(INDEX_URL)
 
-if path.exists('categories.txt'):
+if ospath.exists('categories.txt'):
     with open('categories.txt', 'r+') as f:
         lines = f.readlines()
         for line in lines:
@@ -486,21 +498,19 @@ if path.exists('categories.txt'):
 if BASE_URL:
     Popen(f"gunicorn web.wserver:app --bind 0.0.0.0:{SERVER_PORT}", shell=True)
 
-run(["qbittorrent-nox", "-d", "--profile=."])
-if not path.exists('.netrc'):
-    run(["touch", ".netrc"])
-run(["cp", ".netrc", "/root/.netrc"])
-run(["chmod", "600", ".netrc"])
-run(["chmod", "+x", "aria.sh"])
-run("./aria.sh", shell=True)
-if path.exists('accounts.zip'):
-    if path.exists('accounts'):
-        run(["rm", "-rf", "accounts"])
-    run(["unzip", "-q", "-o", "accounts.zip", "-x", "accounts/emails.txt"])
-    run(["chmod", "-R", "777", "accounts"])
-    remove('accounts.zip')
-if not path.exists('accounts'):
-    config_dict['USE_SERVICE_ACCOUNTS'] = False
+srun(["qbittorrent-nox", "-d", "--profile=."])
+if not ospath.exists('.netrc'):
+    srun(["touch", ".netrc"])
+srun(["cp", ".netrc", "/root/.netrc"])
+srun(["chmod", "600", ".netrc"])
+srun(["chmod", "+x", "aria.sh"])
+srun("./aria.sh", shell=True)
+if ospath.exists('accounts.zip'):
+    if ospath.exists('accounts'):
+        srun(["rm", "-rf", "accounts"])
+    srun(["unzip", "-q", "-o", "accounts.zip"])
+    srun(["chmod", "-R", "777", "accounts"])
+    osremove('accounts.zip')
 sleep(0.5)
 
 aria2 = ariaAPI(ariaClient(host="http://localhost", port=6800, secret=""))
@@ -512,18 +522,16 @@ def get_client():
 
 def aria2c_init():
     try:
-        info("Initializing Aria2c")
+        log_info("Initializing Aria2c")
         link = "https://linuxmint.com/torrents/lmde-5-cinnamon-64bit.iso.torrent"
         dire = DOWNLOAD_DIR.rstrip("/")
         aria2.add_uris([link], {'dir': dire})
         sleep(3)
         downloads = aria2.get_downloads()
-        sleep(15)
-        for dl in downloads:
-            if dl:
-                dl.remove(True, True)
+        sleep(20)
+        aria2.remove(downloads, force=True, files=True, clean=True)
     except Exception as e:
-        error(f"Aria2c initializing error: {e}")
+        log_error(f"Aria2c initializing error: {e}")
 
 aria2c_global = ['bt-max-open-files', 'download-result', 'keep-unfinished-download-result', 'log', 'log-level',
                  'max-concurrent-downloads', 'max-download-result', 'max-overall-download-limit', 'save-session',
@@ -532,32 +540,23 @@ aria2c_global = ['bt-max-open-files', 'download-result', 'keep-unfinished-downlo
 if not aria2_options:
     aria2_options = aria2.client.get_global_option()
     del aria2_options['dir']
-else:
-    a2c_glo = {}
-    for op in aria2c_global:
-        if op in aria2_options:
-            a2c_glo[op] = aria2_options[op]
-    aria2.set_global_options(a2c_glo)
+    del aria2_options['max-download-limit']
+    del aria2_options['lowest-speed-limit']
 
 qb_client = get_client()
 if not qbit_options:
     qbit_options = dict(qb_client.app_preferences())
-    del qbit_options['listen_port']
-    for k in list(qbit_options.keys()):
-        if k.startswith('rss'):
-            del qbit_options[k]
 else:
     qb_opt = {**qbit_options}
     for k, v in list(qb_opt.items()):
-        if v in ["", "*"]:
+        if v in ["", "*"] or k.startswith('rss'):
             del qb_opt[k]
     qb_client.app_set_preferences(qb_opt)
 
 Thread(target=aria2c_init).start()
 sleep(1.5)
 
-tgDefaults = Defaults(parse_mode='HTML', disable_web_page_preview=True, allow_sending_without_reply=True, run_async=True)
-updater = tgUpdater(token=BOT_TOKEN, defaults=tgDefaults, request_kwargs={'read_timeout': 20, 'connect_timeout': 15})
+updater = tgUpdater(token=BOT_TOKEN, request_kwargs={'read_timeout': 20, 'connect_timeout': 15})
 bot = updater.bot
 dispatcher = updater.dispatcher
 job_queue = updater.job_queue

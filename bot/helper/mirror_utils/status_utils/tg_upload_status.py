@@ -1,8 +1,5 @@
+from bot.helper.ext_utils.bot_utils import MirrorStatus, get_readable_file_size, get_readable_time
 from pkg_resources import get_distribution
-
-from bot.helper.ext_utils.bot_utils import (MirrorStatus,
-                                            get_readable_file_size,
-                                            get_readable_time)
 
 engine_ = f"pyrogram v{get_distribution('pyrogram').version}"
 
@@ -11,8 +8,8 @@ class TgUploadStatus:
         self.__obj = obj
         self.__size = size
         self.__gid = gid
-        self.__listener = listener
         self.message = listener.message
+        self.__mode = listener.mode
 
     def processed_bytes(self):
         return self.__obj.uploaded_bytes
@@ -70,4 +67,4 @@ class TgUploadStatus:
                 or self.message.from_user.id
 
     def mode(self):
-        return self.__listener.mode
+        return self.__mode

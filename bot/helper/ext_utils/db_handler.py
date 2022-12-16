@@ -1,12 +1,8 @@
-from os import makedirs
-from os import path as ospath
-
+from os import path as ospath, makedirs
 from pymongo import MongoClient
 from pymongo.errors import PyMongoError
 
-from bot import (DATABASE_URL, LOGGER, aria2_options, bot_id, botname,
-                 config_dict, qbit_options, rss_dict, user_data)
-
+from bot import DATABASE_URL, user_data, rss_dict, botname, LOGGER, bot_id, config_dict, aria2_options, qbit_options
 
 class DbManger:
     def __init__(self):
@@ -155,7 +151,7 @@ class DbManger:
     def trunc_table(self, name):
         if self.__err:
             return
-        self.__db[name][bot_id].drop()
+        self.__db[name].drop()
         self.__conn.close()
 
     def add_download_url(self, url: str, tag: str):

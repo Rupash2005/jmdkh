@@ -1,27 +1,20 @@
+from telegram.ext import CommandHandler, CallbackQueryHandler, MessageHandler, Filters
 from functools import partial
-from os import environ, path, remove, rename
-from subprocess import Popen, run
-from time import sleep, time
-
+from time import time, sleep
+from os import remove, rename, path as ospath, environ
+from subprocess import run as srun, Popen
 from dotenv import load_dotenv
-from telegram.ext import (CallbackQueryHandler, CommandHandler, Filters,
-                          MessageHandler)
 
-from bot import (BUTTON_NAMES, BUTTON_URLS, CATEGORY_IDS, CATEGORY_INDEXS,
-                 CATEGORY_NAMES, DATABASE_URL, DRIVES_IDS, DRIVES_NAMES,
-                 GLOBAL_EXTENSION_FILTER, INDEX_URLS, IS_PREMIUM_USER, LOGGER,
-                 MAX_SPLIT_SIZE, SHORTENER_APIS, SHORTENERES, Interval, aria2,
-                 aria2_options, aria2c_global, config_dict, dispatcher,
-                 download_dict, get_client, qbit_options,
-                 status_reply_dict_lock, user_data)
-from bot.helper.ext_utils.bot_utils import (get_readable_file_size, new_thread,
-                                            set_commands, setInterval)
-from bot.helper.ext_utils.db_handler import DbManger
+from bot import config_dict, user_data, dispatcher, DATABASE_URL, MAX_SPLIT_SIZE, DRIVES_IDS, DRIVES_NAMES, INDEX_URLS, aria2, GLOBAL_EXTENSION_FILTER, status_reply_dict_lock, Interval, \
+    aria2_options, aria2c_global, IS_PREMIUM_USER, download_dict, CATEGORY_IDS, CATEGORY_INDEXS, CATEGORY_NAMES, qbit_options, get_client, SHORTENERES, SHORTENER_APIS, \
+    BUTTON_NAMES, BUTTON_URLS
+from bot.helper.telegram_helper.message_utils import sendFile, sendMarkup, editMessage, update_all_messages
+from bot.helper.ext_utils.jmdkh_utils import initiate_sharer_drive
+from bot.helper.telegram_helper.filters import CustomFilters
 from bot.helper.telegram_helper.bot_commands import BotCommands
 from bot.helper.telegram_helper.button_build import ButtonMaker
-from bot.helper.telegram_helper.filters import CustomFilters
-from bot.helper.telegram_helper.message_utils import (editMessage, sendFile, sendMessage,
-                                                      update_all_messages)
+from bot.helper.ext_utils.bot_utils import new_thread, setInterval, set_commands, get_readable_file_size
+from bot.helper.ext_utils.db_handler import DbManger
 from bot.modules.search import initiate_search_tools
 
 START = 0
@@ -31,9 +24,10 @@ default_values = {'AUTO_DELETE_MESSAGE_DURATION': 30,
                   'DOWNLOAD_DIR': '/usr/src/app/downloads/',
                   'LEECH_SPLIT_SIZE': MAX_SPLIT_SIZE,
                   'RSS_DELAY': 900,
-                  'DOWNLOAD_STATUS_UPDATE_INTERVAL': 10,
+                  'STATUS_UPDATE_INTERVAL': 10,
                   'SEARCH_LIMIT': 0,
-                  'UPSTREAM_BRANCH': 'master'}
+                  'UPSTREAM_BRANCH': 'master',
+                  'BUTTON_TIMEOUT': 30}
 
 
 def load_config():
@@ -118,6 +112,10 @@ def load_config():
     if len(RSS_COMMAND) == 0:
         RSS_COMMAND = ''
 
+    LEECH_FILENAME_PERFIX = environ.get('LEECH_FILENAME_PERFIX', '')
+    if len(LEECH_FILENAME_PERFIX) == 0:
+        LEECH_FILENAME_PERFIX = ''
+
     SEARCH_PLUGINS = environ.get('SEARCH_PLUGINS', '')
     if len(SEARCH_PLUGINS) == 0:
         SEARCH_PLUGINS = ''
@@ -130,17 +128,17 @@ def load_config():
     else:
         LEECH_SPLIT_SIZE = int(LEECH_SPLIT_SIZE)
 
-    DOWNLOAD_STATUS_UPDATE_INTERVAL = environ.get('DOWNLOAD_STATUS_UPDATE_INTERVAL', '')
-    if len(DOWNLOAD_STATUS_UPDATE_INTERVAL) == 0:
-        DOWNLOAD_STATUS_UPDATE_INTERVAL = 10
+    STATUS_UPDATE_INTERVAL = environ.get('STATUS_UPDATE_INTERVAL', '')
+    if len(STATUS_UPDATE_INTERVAL) == 0:
+        STATUS_UPDATE_INTERVAL = 10
     else:
-        DOWNLOAD_STATUS_UPDATE_INTERVAL = int(DOWNLOAD_STATUS_UPDATE_INTERVAL)
+        STATUS_UPDATE_INTERVAL = int(STATUS_UPDATE_INTERVAL)
     if len(download_dict) != 0:
         with status_reply_dict_lock:
             if Interval:
                 Interval[0].cancel()
                 Interval.clear()
-                Interval.append(setInterval(DOWNLOAD_STATUS_UPDATE_INTERVAL, update_all_messages))
+                Interval.append(setInterval(STATUS_UPDATE_INTERVAL, update_all_messages))
 
     AUTO_DELETE_MESSAGE_DURATION = environ.get('AUTO_DELETE_MESSAGE_DURATION', '')
     if len(AUTO_DELETE_MESSAGE_DURATION) == 0:
@@ -158,14 +156,8 @@ def load_config():
     DUMP_CHAT = environ.get('DUMP_CHAT', '')
     DUMP_CHAT = '' if len(DUMP_CHAT) == 0 else int(DUMP_CHAT)
 
-    LOG_CHAT = environ.get('LOG_CHAT', '')
-    LOG_CHAT = '' if len(LOG_CHAT) == 0 else int(LOG_CHAT)
-
     STATUS_LIMIT = environ.get('STATUS_LIMIT', '')
     STATUS_LIMIT = '' if len(STATUS_LIMIT) == 0 else int(STATUS_LIMIT)
-
-    USER_MAX_TASKS = environ.get('USER_MAX_TASKS', '')
-    USER_MAX_TASKS = '' if len(USER_MAX_TASKS) == 0 else int(USER_MAX_TASKS)
 
     RSS_CHAT_ID = environ.get('RSS_CHAT_ID', '')
     RSS_CHAT_ID = '' if len(RSS_CHAT_ID) == 0 else int(RSS_CHAT_ID)
@@ -173,7 +165,7 @@ def load_config():
     RSS_DELAY = environ.get('RSS_DELAY', '')
     RSS_DELAY = 900 if len(RSS_DELAY) == 0 else int(RSS_DELAY)
 
-    CMD_SUFFIX = environ.get('CMD_SUFFIX', '')
+    CMD_PERFIX = environ.get('CMD_PERFIX', '')
 
     USER_SESSION_STRING = environ.get('USER_SESSION_STRING', '')
 
@@ -182,26 +174,13 @@ def load_config():
     TORRENT_TIMEOUT = environ.get('TORRENT_TIMEOUT', '')
     downloads = aria2.get_downloads()
     if len(TORRENT_TIMEOUT) == 0:
-        for download in downloads:
-            if not download.is_complete:
-                try:
-                    aria2.client.change_option(download.gid, {'bt-stop-timeout': '0'})
-                except Exception as e:
-                    LOGGER.error(e)
+        if downloads:
+            aria2.set_options({'bt-stop-timeout': '0'}, downloads)
         aria2_options['bt-stop-timeout'] = '0'
-        if DATABASE_URL:
-            DbManger().update_aria2('bt-stop-timeout', '0')
-        TORRENT_TIMEOUT = ''
     else:
-        for download in downloads:
-            if not download.is_complete:
-                try:
-                    aria2.client.change_option(download.gid, {'bt-stop-timeout': TORRENT_TIMEOUT})
-                except Exception as e:
-                    LOGGER.error(e)
+        if downloads:
+            aria2.set_options({'bt-stop-timeout': TORRENT_TIMEOUT}, downloads)
         aria2_options['bt-stop-timeout'] = TORRENT_TIMEOUT
-        if DATABASE_URL:
-            DbManger().update_aria2('bt-stop-timeout', TORRENT_TIMEOUT)
         TORRENT_TIMEOUT = int(TORRENT_TIMEOUT)
 
     INCOMPLETE_TASK_NOTIFIER = environ.get('INCOMPLETE_TASK_NOTIFIER', '')
@@ -239,9 +218,9 @@ def load_config():
     BASE_URL = environ.get('BASE_URL', '').rstrip("/")
     if len(BASE_URL) == 0:
         BASE_URL = ''
-        run(["pkill", "-9", "-f", "gunicorn"])
+        srun(["pkill", "-9", "-f", "gunicorn"])
     else:
-        run(["pkill", "-9", "-f", "gunicorn"])
+        srun(["pkill", "-9", "-f", "gunicorn"])
         Popen(f"gunicorn web.wserver:app --bind 0.0.0.0:{SERVER_PORT}", shell=True)
 
     UPSTREAM_REPO = environ.get('UPSTREAM_REPO', '')
@@ -279,6 +258,9 @@ def load_config():
     MAX_PLAYLIST = environ.get('MAX_PLAYLIST', '')
     MAX_PLAYLIST = '' if len(MAX_PLAYLIST) == 0 else int(MAX_PLAYLIST)
 
+    GDTOT_CRYPT = environ.get('GDTOT_CRYPT', '')
+    if len(GDTOT_CRYPT) == 0:
+        GDTOT_CRYPT = ''
 
     ENABLE_CHAT_RESTRICT = environ.get('ENABLE_CHAT_RESTRICT', '')
     ENABLE_CHAT_RESTRICT = ENABLE_CHAT_RESTRICT.lower() == 'true'
@@ -292,24 +274,33 @@ def load_config():
     if not STOP_DUPLICATE_TASKS and DATABASE_URL:
         DbManger().clear_download_links()
 
+    SHARER_EMAIL = environ.get('SHARER_EMAIL', '')
+    SHARER_PASS = environ.get('SHARER_PASS', '')
+    if len(SHARER_EMAIL) == 0 or len(SHARER_PASS) == 0:
+        SHARER_EMAIL = ''
+        SHARER_PASS = ''
+
+    SHARER_DRIVE_SITE = environ.get('SHARER_DRIVE_SITE', '').rstrip("/")
+    if len(SHARER_DRIVE_SITE) == 0:
+        SHARER_DRIVE_SITE = ''
+
+    ENABLE_SHARER_LIST = environ.get('ENABLE_SHARER_LIST', '')
+    ENABLE_SHARER_LIST = ENABLE_SHARER_LIST.lower() == 'true'
+
     DISABLE_DRIVE_LINK = environ.get('DISABLE_DRIVE_LINK', '')
     DISABLE_DRIVE_LINK = DISABLE_DRIVE_LINK.lower() == 'true'
-
-    DISABLE_LEECH = environ.get('DISABLE_LEECH', '')
-    DISABLE_LEECH = DISABLE_LEECH.lower() == 'true'
 
     SET_COMMANDS = environ.get('SET_COMMANDS', '')
     SET_COMMANDS = SET_COMMANDS.lower() == 'true'
 
-    ENABLE_DM = environ.get('ENABLE_DM', '')
-    ENABLE_DM = ENABLE_DM.lower() == 'true'
+    MIRROR_LOG = environ.get('MIRROR_LOG', '')
+    if len(MIRROR_LOG) != 0 and not MIRROR_LOG.startswith('-100') or len(MIRROR_LOG) == 0:
+        MIRROR_LOG = ''
+    else:
+        MIRROR_LOG = int(MIRROR_LOG)
 
-    DELETE_LINKS = environ.get('DELETE_LINKS', '')
-    DELETE_LINKS = DELETE_LINKS.lower() == 'true'
-
-    FSUB_IDS = environ.get('FSUB_IDS', '')
-    if len(FSUB_IDS) == 0:
-        FSUB_IDS = ''
+    BUTTON_TIMEOUT = environ.get('BUTTON_TIMEOUT', '')
+    BUTTON_TIMEOUT = 30 if len(BUTTON_TIMEOUT) == 0 else int(BUTTON_TIMEOUT)
 
     DRIVES_NAMES.clear()
     DRIVES_IDS.clear()
@@ -320,7 +311,7 @@ def load_config():
         DRIVES_IDS.append(GDRIVE_ID)
         INDEX_URLS.append(INDEX_URL)
 
-    if path.exists('list_drives.txt'):
+    if ospath.exists('list_drives.txt'):
         with open('list_drives.txt', 'r+') as f:
             lines = f.readlines()
             for line in lines:
@@ -341,7 +332,7 @@ def load_config():
         CATEGORY_IDS.append(GDRIVE_ID)
         CATEGORY_INDEXS.append(INDEX_URL)
 
-    if path.exists('categories.txt'):
+    if ospath.exists('categories.txt'):
         with open('categories.txt', 'r+') as f:
             lines = f.readlines()
             for line in lines:
@@ -357,15 +348,13 @@ def load_config():
 
     config_dict.update({'AS_DOCUMENT': AS_DOCUMENT,
                    'AUTHORIZED_CHATS': AUTHORIZED_CHATS,
-                   'FSUB_IDS': FSUB_IDS,
                    'AUTO_DELETE_MESSAGE_DURATION': AUTO_DELETE_MESSAGE_DURATION,
                    'BASE_URL': BASE_URL,
                    'BOT_TOKEN': BOT_TOKEN,
-                   'CMD_SUFFIX': CMD_SUFFIX,
+                   'CMD_PERFIX': CMD_PERFIX,
                    'DATABASE_URL': DATABASE_URL,
                    'DOWNLOAD_DIR': DOWNLOAD_DIR,
                    'DUMP_CHAT': DUMP_CHAT,
-                   'LOG_CHAT': LOG_CHAT,
                    'EQUAL_SPLITS': EQUAL_SPLITS,
                    'EXTENSION_FILTER': EXTENSION_FILTER,
                    'GDRIVE_ID': GDRIVE_ID,
@@ -373,6 +362,7 @@ def load_config():
                    'INCOMPLETE_TASK_NOTIFIER': INCOMPLETE_TASK_NOTIFIER,
                    'INDEX_URL': INDEX_URL,
                    'IS_TEAM_DRIVE': IS_TEAM_DRIVE,
+                   'LEECH_FILENAME_PERFIX': LEECH_FILENAME_PERFIX,
                    'LEECH_SPLIT_SIZE': LEECH_SPLIT_SIZE,
                    'MEGA_API_KEY': MEGA_API_KEY,
                    'MEGA_EMAIL_ID': MEGA_EMAIL_ID,
@@ -387,8 +377,7 @@ def load_config():
                    'SEARCH_PLUGINS': SEARCH_PLUGINS,
                    'SERVER_PORT': SERVER_PORT,
                    'STATUS_LIMIT': STATUS_LIMIT,
-                   'USER_MAX_TASKS': USER_MAX_TASKS,
-                   'DOWNLOAD_STATUS_UPDATE_INTERVAL': DOWNLOAD_STATUS_UPDATE_INTERVAL,
+                   'STATUS_UPDATE_INTERVAL': STATUS_UPDATE_INTERVAL,
                    'STOP_DUPLICATE': STOP_DUPLICATE,
                    'SUDO_USERS': SUDO_USERS,
                    'TELEGRAM_API': TELEGRAM_API,
@@ -411,14 +400,18 @@ def load_config():
                    'MEGA_LIMIT': MEGA_LIMIT,
                    'LEECH_LIMIT': LEECH_LIMIT,
                    'MAX_PLAYLIST': MAX_PLAYLIST,
+                   'GDTOT_CRYPT': GDTOT_CRYPT,
                    'ENABLE_CHAT_RESTRICT': ENABLE_CHAT_RESTRICT,
                    'ENABLE_MESSAGE_FILTER': ENABLE_MESSAGE_FILTER,
                    'STOP_DUPLICATE_TASKS': STOP_DUPLICATE_TASKS,
+                   'SHARER_DRIVE_SITE': SHARER_DRIVE_SITE,
+                   'ENABLE_SHARER_LIST': ENABLE_SHARER_LIST,
                    'DISABLE_DRIVE_LINK': DISABLE_DRIVE_LINK,
                    'SET_COMMANDS': SET_COMMANDS,
-                   'DISABLE_LEECH': DISABLE_LEECH,
-                   'ENABLE_DM': ENABLE_DM,
-                   'DELETE_LINKS': DELETE_LINKS})
+                   'MIRROR_LOG': MIRROR_LOG,
+                   'SHARER_EMAIL': SHARER_EMAIL,
+                   'SHARER_PASS': SHARER_PASS,
+                   'BUTTON_TIMEOUT': BUTTON_TIMEOUT})
 
     if DATABASE_URL:
         DbManger().update_config(config_dict)
@@ -426,7 +419,7 @@ def load_config():
 def get_buttons(key=None, edit_type=None):
     buttons = ButtonMaker()
     if key is None:
-        buttons.sbutton('Config Variables', "botset var")
+        buttons.sbutton('Edit Variables', "botset var")
         buttons.sbutton('Private Files', "botset private")
         buttons.sbutton('Qbit Settings', "botset qbit")
         buttons.sbutton('Aria2c Settings', "botset aria")
@@ -447,7 +440,7 @@ def get_buttons(key=None, edit_type=None):
     elif key == 'private':
         buttons.sbutton('Back', "botset back")
         buttons.sbutton('Close', "botset close")
-        msg = f'Send private file: config.env, token.pickle, accounts.zip, list_drives.txt, categories.txt, shortnners.txt, buttons.txt, cookies.txt, terabox.txt or .netrc.\nTimeout: 60 sec' \
+        msg = f'Send private file: config.env, token.pickle, accounts.zip, list_drives.txt, categories.txt, shortnners.txt, buttons.txt, cookies.txt or .netrc.\nTimeout: 60 sec' \
             '\nTo delete private file send the name of the file only as text message.\nTimeout: 60 sec'
     elif key == 'aria':
         for k in list(aria2_options.keys())[START:10+START]:
@@ -519,7 +512,7 @@ def edit_variable(update, context, omsg, key):
     elif key == 'DOWNLOAD_DIR':
         if not value.endswith('/'):
             value = f'{value}/'
-    elif key == 'DOWNLOAD_STATUS_UPDATE_INTERVAL':
+    elif key == 'STATUS_UPDATE_INTERVAL':
         value = int(value)
         if len(download_dict) != 0:
             with status_reply_dict_lock:
@@ -530,18 +523,14 @@ def edit_variable(update, context, omsg, key):
     elif key == 'TORRENT_TIMEOUT':
         value = int(value)
         downloads = aria2.get_downloads()
-        for download in downloads:
-            if not download.is_complete:
-                try:
-                    aria2.client.change_option(download.gid, {'bt-stop-timeout': f'{value}'})
-                except Exception as e:
-                    LOGGER.error(e)
+        if downloads:
+            aria2.set_options({'bt-stop-timeout': f'{value}'}, downloads)
         aria2_options['bt-stop-timeout'] = f'{value}'
     elif key == 'LEECH_SPLIT_SIZE':
         value = min(int(value), MAX_SPLIT_SIZE)
     elif key == 'SERVER_PORT':
         value = int(value)
-        run(["pkill", "-9", "-f", "gunicorn"])
+        srun(["pkill", "-9", "-f", "gunicorn"])
         Popen(f"gunicorn web.wserver:app --bind 0.0.0.0:{value}", shell=True)
     elif key == 'EXTENSION_FILTER':
         fx = value.split()
@@ -551,6 +540,8 @@ def edit_variable(update, context, omsg, key):
             GLOBAL_EXTENSION_FILTER.append(x.strip().lower())
     elif key in ['SEARCH_PLUGINS', 'SEARCH_API_LINK']:
         initiate_search_tools()
+    elif key == 'SHARER_DRIVE_SITE':
+        initiate_sharer_drive()
     elif key == 'GDRIVE_ID':
         if DRIVES_NAMES and DRIVES_NAMES[0] == 'Main':
             DRIVES_IDS[0] = value
@@ -569,9 +560,9 @@ def edit_variable(update, context, omsg, key):
             CATEGORY_INDEXS[0] = value
         else:
             CATEGORY_INDEXS.insert(0, value)
-    elif key not in ['SEARCH_LIMIT', 'STATUS_LIMIT'] and key.endswith(('_THRESHOLD', '_LIMIT')):
+    elif key != 'STATUS_LIMIT' and key.endswith(('_THRESHOLD', '_LIMIT')):
         value = float(value)
-    elif value.isdigit() and key != 'FSUB_IDS':
+    elif value.isdigit():
         value = int(value)
     config_dict[key] = value
     if key == 'SET_COMMANDS':
@@ -594,12 +585,8 @@ def edit_aria(update, context, omsg, key):
         aria2.set_global_options({key: value})
     else:
         downloads = aria2.get_downloads()
-        for download in downloads:
-            if not download.is_complete:
-                try:
-                    aria2.client.change_option(download.gid, {key: value})
-                except Exception as e:
-                    LOGGER.error(e)
+        if downloads:
+            aria2.set_options({key: value}, downloads)
     aria2_options[key] = value
     update_buttons(omsg, 'aria')
     update.message.delete()
@@ -630,25 +617,15 @@ def update_private_file(update, context, omsg):
     message = update.message
     if not message.document and message.text:
         file_name = message.text.strip()
-        file_name = file_name.rsplit('.zip', 1)[0]
-        if path.exists(file_name):
-            remove(file_name)
-        if file_name == 'accounts':
-            config_dict['USE_SERVICE_ACCOUNTS'] = False
-            if DATABASE_URL:
-                DbManger().update_config({'USE_SERVICE_ACCOUNTS': False})
-        elif file_name in ['.netrc', 'netrc']:
-            run(["touch", ".netrc"])
-            run(["cp", ".netrc", "/root/.netrc"])
-            run(["chmod", "600", ".netrc"])
-        elif file_name == 'buttons.txt':
+        if file_name == 'buttons.txt':
             BUTTON_NAMES.clear()
             BUTTON_URLS.clear()
         elif file_name == 'categories.txt':
             CATEGORY_NAMES.clear()
             CATEGORY_IDS.clear()
             CATEGORY_INDEXS.clear()
-            if GDRIVE_ID:= config_dict['GDRIVE_ID']:
+            GDRIVE_ID = config_dict['GDRIVE_ID']
+            if GDRIVE_ID:
                 CATEGORY_NAMES.append('Root')
                 CATEGORY_IDS.append(GDRIVE_ID)
                 CATEGORY_INDEXS.append(config_dict['INDEX_URL'])
@@ -656,23 +633,33 @@ def update_private_file(update, context, omsg):
             DRIVES_IDS.clear()
             DRIVES_NAMES.clear()
             INDEX_URLS.clear()
-            if GDRIVE_ID:= config_dict['GDRIVE_ID']:
+            GDRIVE_ID = config_dict['GDRIVE_ID']
+            if GDRIVE_ID:
                 DRIVES_NAMES.append('Main')
                 DRIVES_IDS.append(GDRIVE_ID)
                 INDEX_URLS.append(config_dict['INDEX_URL'])
         elif file_name == 'shorteners.txt':
             SHORTENERES.clear()
             SHORTENER_APIS.clear()
+        elif file_name in ['.netrc', 'netrc']:
+            file_name = ".netrc"
+            if ospath.exists("/root/.netrc"):
+                remove("/root/.netrc")
+        if ospath.exists(file_name):
+            remove(file_name)
+        elif file_name == 'accounts':
+            if ospath.exists('accounts'):
+                srun(["rm", "-rf", "accounts"])
         message.delete()
     else:
         doc = message.document
         file_name = doc.file_name
         doc.get_file().download(custom_path=file_name)
         if file_name == 'accounts.zip':
-            if path.exists('accounts'):
-                run(["rm", "-rf", "accounts"])
-            run(["unzip", "-q", "-o", "accounts.zip", "-x", "accounts/emails.txt"])
-            run(["chmod", "-R", "777", "accounts"])
+            if ospath.exists('accounts'):
+                srun(["rm", "-rf", "accounts"])
+            srun(["unzip", "-q", "-o", "accounts.zip"])
+            srun(["chmod", "-R", "777", "accounts"])
         elif file_name == 'list_drives.txt':
             DRIVES_IDS.clear()
             DRIVES_NAMES.clear()
@@ -735,8 +722,8 @@ def update_private_file(update, context, omsg):
             if file_name == 'netrc':
                 rename('netrc', '.netrc')
                 file_name = '.netrc'
-            run(["cp", ".netrc", "/root/.netrc"])
-            run(["chmod", "600", ".netrc"])
+            srun(["cp", ".netrc", "/root/.netrc"])
+            srun(["chmod", "600", ".netrc"])
         elif file_name == 'config.env':
             load_dotenv('config.env', override=True)
             load_config()
@@ -745,13 +732,13 @@ def update_private_file(update, context, omsg):
             msg = 'Push to UPSTREAM_REPO ?'
             buttons.sbutton('Yes!', f"botset push {file_name}")
             buttons.sbutton('No', "botset close")
-            sendMessage(msg, context.bot, message, buttons.build_menu(2))
+            sendMarkup(msg, context.bot, message, buttons.build_menu(2))
         else:
             message.delete()
     update_buttons(omsg)
     if DATABASE_URL and file_name != 'config.env':
         DbManger().update_private_file(file_name)
-    if path.exists('accounts.zip'):
+    if ospath.exists('accounts.zip'):
         remove('accounts.zip')
 
 @new_thread
@@ -766,8 +753,8 @@ def edit_bot_settings(update, context):
     elif data[1] == 'close':
         query.answer()
         handler_dict[message.chat.id] = False
-        message.delete()
-        message.reply_to_message.delete()
+        query.message.delete()
+        query.message.reply_to_message.delete()
     elif data[1] == 'back':
         query.answer()
         handler_dict[message.chat.id] = False
@@ -782,7 +769,7 @@ def edit_bot_settings(update, context):
         value = ''
         if data[2] in default_values:
             value = default_values[data[2]]
-            if data[2] == "DOWNLOAD_STATUS_UPDATE_INTERVAL" and len(download_dict) != 0:
+            if data[2] == "STATUS_UPDATE_INTERVAL" and len(download_dict) != 0:
                 with status_reply_dict_lock:
                     if Interval:
                         Interval[0].cancel()
@@ -793,20 +780,14 @@ def edit_bot_settings(update, context):
             GLOBAL_EXTENSION_FILTER.append('.aria2')
         elif data[2] == 'TORRENT_TIMEOUT':
             downloads = aria2.get_downloads()
-            for download in downloads:
-                if not download.is_complete:
-                    try:
-                        download.options.bt_stop_timeout = 0
-                    except Exception as e:
-                        LOGGER.error(e)
+            if downloads:
+                aria2.set_options({'bt-stop-timeout': '0'}, downloads)
             aria2_options['bt-stop-timeout'] = '0'
-            if DATABASE_URL:
-                DbManger().update_aria2('bt-stop-timeout', '0')
         elif data[2] == 'BASE_URL':
-            run(["pkill", "-9", "-f", "gunicorn"])
+            srun(["pkill", "-9", "-f", "gunicorn"])
         elif data[2] == 'SERVER_PORT':
             value = 80
-            run(["pkill", "-9", "-f", "gunicorn"])
+            srun(["pkill", "-9", "-f", "gunicorn"])
             Popen("gunicorn web.wserver:app --bind 0.0.0.0:80", shell=True)
         elif data[2] == 'GDRIVE_ID':
             if DRIVES_NAMES and DRIVES_NAMES[0] == 'Main':
@@ -841,12 +822,8 @@ def edit_bot_settings(update, context):
         aria2_options[data[2]] = value
         update_buttons(message, 'aria')
         downloads = aria2.get_downloads()
-        for download in downloads:
-            if not download.is_complete:
-                try:
-                    aria2.client.change_option(download.gid, {data[2]: value})
-                except Exception as e:
-                    LOGGER.error(e)
+        if downloads:
+            aria2.set_options({data[2]: value}, downloads)
         if DATABASE_URL:
             DbManger().update_aria2(data[2], value)
     elif data[1] == 'emptyaria':
@@ -855,12 +832,8 @@ def edit_bot_settings(update, context):
         aria2_options[data[2]] = ''
         update_buttons(message, 'aria')
         downloads = aria2.get_downloads()
-        for download in downloads:
-            if not download.is_complete:
-                try:
-                    aria2.client.change_option(download.gid, {data[2]: ''})
-                except Exception as e:
-                    LOGGER.error(e)
+        if downloads:
+            aria2.set_options({data[2]: ''}, downloads)
         if DATABASE_URL:
             DbManger().update_aria2(data[2], '')
     elif data[1] == 'emptyqbit':
@@ -881,7 +854,7 @@ def edit_bot_settings(update, context):
         handler_dict[message.chat.id] = True
         update_buttons(message, 'private')
         partial_fnc = partial(update_private_file, omsg=message)
-        file_handler = MessageHandler(filters=(Filters.document | Filters.text) & Filters.chat(message.chat.id) & Filters.user(user_id), callback=partial_fnc)
+        file_handler = MessageHandler(filters=(Filters.document | Filters.text) & Filters.chat(message.chat.id) & Filters.user(user_id), callback=partial_fnc, run_async=True)
         dispatcher.add_handler(file_handler)
         while handler_dict[message.chat.id]:
             if time() - start_time > 60:
@@ -889,7 +862,7 @@ def edit_bot_settings(update, context):
                 update_buttons(message)
         dispatcher.remove_handler(file_handler)
     elif data[1] == 'editvar' and STATE == 'edit':
-        if data[2] in ['SUDO_USERS', 'RSS_USER_SESSION_STRING', 'IGNORE_PENDING_REQUESTS', 'CMD_SUFFIX', 'OWNER_ID',
+        if data[2] in ['SUDO_USERS', 'RSS_USER_SESSION_STRING', 'IGNORE_PENDING_REQUESTS', 'CMD_PERFIX', 'OWNER_ID',
                        'USER_SESSION_STRING', 'TELEGRAM_HASH', 'TELEGRAM_API', 'AUTHORIZED_CHATS', 'RSS_DELAY'
                        'DATABASE_URL', 'BOT_TOKEN', 'DOWNLOAD_DIR']:
             query.answer(text='Restart required for this edit to take effect!', show_alert=True)
@@ -903,7 +876,7 @@ def edit_bot_settings(update, context):
         update_buttons(message, data[2], data[1])
         partial_fnc = partial(edit_variable, omsg=message, key=data[2])
         value_handler = MessageHandler(filters=Filters.text & Filters.chat(message.chat.id) & Filters.user(user_id),
-                        callback=partial_fnc)
+                        callback=partial_fnc, run_async=True)
         dispatcher.add_handler(value_handler)
         while handler_dict[message.chat.id]:
             if time() - start_time > 60:
@@ -934,8 +907,8 @@ def edit_bot_settings(update, context):
         handler_dict[message.chat.id] = True
         update_buttons(message, data[2], data[1])
         partial_fnc = partial(edit_aria, omsg=message, key=data[2])
-        value_handler = MessageHandler(filters=Filters.text & Filters.chat(message.chat.id) & Filters.user(user_id),
-                                       callback=partial_fnc)
+        value_handler = MessageHandler(filters=Filters.text & Filters.chat(message.chat.id) & Filters.user(user_id), 
+                        callback=partial_fnc, run_async=True)
         dispatcher.add_handler(value_handler)
         while handler_dict[message.chat.id]:
             if time() - start_time > 60:
@@ -964,7 +937,7 @@ def edit_bot_settings(update, context):
         update_buttons(message, data[2], data[1])
         partial_fnc = partial(edit_qbit, omsg=message, key=data[2])
         value_handler = MessageHandler(filters=Filters.text & Filters.chat(message.chat.id) & Filters.user(user_id),
-                                       callback=partial_fnc)
+                        callback=partial_fnc, run_async=True)
         dispatcher.add_handler(value_handler)
         while handler_dict[message.chat.id]:
             if time() - start_time > 60:
@@ -997,27 +970,22 @@ def edit_bot_settings(update, context):
             globals()['START'] = int(data[3])
             update_buttons(message, data[2])
     elif data[1] == 'push':
-        filename = data[2].rsplit('.zip', 1)[0]
-        if path.exists(filename):
-            run([f"git add -f {filename} \
-                    && git commit -sm botsettings -q \
-                    && git push origin {config_dict['UPSTREAM_BRANCH']} -q"], shell=True)
-        else:
-            run([f"git rm -r --cached {filename} \
-                    && git commit -sm botsettings -q \
-                    && git push origin {config_dict['UPSTREAM_BRANCH']} -q"], shell=True)
-        message.delete()
-        message.reply_to_message.delete()
+        query.answer()
+        srun([f"git add -f {data[2].rsplit('.zip', 1)[0]} \
+                && git commit -sm botsettings -q \
+                && git push origin {config_dict['UPSTREAM_BRANCH']} -q"], shell=True)
+        query.message.delete()
+        query.message.reply_to_message.delete()
 
 
 def bot_settings(update, context):
     msg, button = get_buttons()
-    sendMessage(msg, context.bot, update.message, button)
+    sendMarkup(msg, context.bot, update.message, button)
 
 
 bot_settings_handler = CommandHandler(BotCommands.BotSetCommand, bot_settings,
-                                      filters=CustomFilters.owner_filter | CustomFilters.sudo_user)
-bb_set_handler = CallbackQueryHandler(edit_bot_settings, pattern="botset")
+                                      filters=CustomFilters.owner_filter | CustomFilters.sudo_user, run_async=True)
+bb_set_handler = CallbackQueryHandler(edit_bot_settings, pattern="botset", run_async=True)
 
 dispatcher.add_handler(bot_settings_handler)
 dispatcher.add_handler(bb_set_handler)

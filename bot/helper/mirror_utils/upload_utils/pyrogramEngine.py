@@ -1,19 +1,14 @@
-from logging import ERROR, getLogger
-from os import path as ospath
-from os import remove, rename, walk
-from re import sub
-from threading import RLock
-from time import sleep, time
-
-from PIL import Image
-from pyrogram.errors import FloodWait, RPCError
+from logging import getLogger, ERROR
+from os import remove as osremove, walk, path as ospath, rename as osrename
+from time import time, sleep
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from pyrogram.errors import FloodWait, RPCError
+from PIL import Image
+from threading import RLock
 
-from bot import (GLOBAL_EXTENSION_FILTER, IS_USER_SESSION, app, config_dict,
-                 user_data)
+from bot import config_dict, user_data, app, GLOBAL_EXTENSION_FILTER
+from bot.helper.ext_utils.fs_utils import take_ss, get_media_info, get_media_streams, clean_unwanted
 from bot.helper.ext_utils.bot_utils import get_readable_file_size
-from bot.helper.ext_utils.fs_utils import (clean_unwanted, get_media_info,
-                                           get_media_streams, take_ss)
 
 LOGGER = getLogger(__name__)
 getLogger("pyrogram").setLevel(ERROR)
@@ -40,7 +35,6 @@ class TgUploader:
         self.__is_corrupted = False
         self.__size = size
         self.__button = None
-        self.__lprefix = None
         self.__msg_to_reply()
         self.__user_settings()
 
@@ -72,19 +66,18 @@ class TgUploader:
         if self.__listener.seed and not self.__listener.newDir:
             clean_unwanted(self.__path)
         if self.__total_files <= self.__corrupted:
-            self.__listener.onUploadError('Files Corrupted. Check logs!')
-            return
+            return self.__listener.onUploadError('Files Corrupted. Check logs')
         LOGGER.info(f"Leech Completed: {self.name}")
         size = get_readable_file_size(self.__size)
         self.__listener.onUploadComplete(None, size, self.__msgs_dict, self.__total_files, self.__corrupted, self.name)
 
     def __upload_file(self, up_path, file_, dirpath):
-        if self.__lprefix:
-            cap_mono = f"{self.__lprefix} <code>{file_}</code>"
-            self.__lprefix = sub('<.*?>', '', self.__lprefix)
-            file_ = f"{self.__lprefix} {file_}"
+        LEECH_FILENAME_PERFIX = config_dict['LEECH_FILENAME_PERFIX']
+        if LEECH_FILENAME_PERFIX:
+            cap_mono = f"{LEECH_FILENAME_PERFIX} <code>{file_}</code>"
+            file_ = f"{LEECH_FILENAME_PERFIX} {file_}"
             new_path = ospath.join(dirpath, file_)
-            rename(up_path, new_path)
+            osrename(up_path, new_path)
             up_path = new_path
         else:
             cap_mono = f"<code>{file_}</code>"
@@ -100,7 +93,7 @@ class TgUploader:
                         thumb = take_ss(up_path, duration)
                         if self.__is_cancelled:
                             if self.__thumb is None and thumb and ospath.lexists(thumb):
-                                remove(thumb)
+                                osremove(thumb)
                             return
                     if thumb:
                         with Image.open(thumb) as img:
@@ -111,7 +104,7 @@ class TgUploader:
                     if not file_.upper().endswith(("MKV", "MP4")):
                         file_ = f"{ospath.splitext(file_)[0]}.mp4"
                         new_path = ospath.join(dirpath, file_)
-                        rename(up_path, new_path)
+                        osrename(up_path, new_path)
                         up_path = new_path
                     self.__sent_msg = self.__sent_msg.reply_video(video=up_path,
                                                                   quote=True,
@@ -150,7 +143,7 @@ class TgUploader:
                     thumb = take_ss(up_path, None)
                     if self.__is_cancelled:
                         if self.__thumb is None and thumb and ospath.lexists(thumb):
-                            remove(thumb)
+                            osremove(thumb)
                         return
                 self.__sent_msg = self.__sent_msg.reply_document(document=up_path,
                                                                  quote=True,
@@ -159,18 +152,6 @@ class TgUploader:
                                                                  disable_notification=True,
                                                                  reply_markup=self.__button,
                                                                  progress=self.__upload_progress)
-            if self.__listener.dmMessage and self.__sent_DMmsg:
-                sleep(1)
-                if IS_USER_SESSION:
-                    self.__sent_DMmsg = self.__listener.bot.copy_message(
-                    chat_id=self.__listener.message.from_user.id,
-                    from_chat_id=self.__sent_msg.chat.id,
-                    message_id=self.__sent_msg.id,
-                    reply_to_message_id=self.__sent_DMmsg['message_id'])
-                else:
-                    self.__sent_DMmsg = self.__sent_msg.copy(
-                        chat_id=self.__sent_DMmsg.chat.id,
-                        reply_to_message_id=self.__sent_DMmsg.id)
         except FloodWait as f:
             LOGGER.warning(str(f))
             sleep(f.value)
@@ -183,11 +164,11 @@ class TgUploader:
             self.__corrupted += 1
             self.__is_corrupted = True
         if self.__thumb is None and thumb and ospath.lexists(thumb):
-            remove(thumb)
+            osremove(thumb)
         if not self.__is_cancelled and \
                    (not self.__listener.seed or self.__listener.newDir or dirpath.endswith("splited_files_mltb")):
             try:
-                remove(up_path)
+                osremove(up_path)
             except:
                 pass
 
@@ -207,26 +188,22 @@ class TgUploader:
                 self.__as_doc = True
             elif user_data[user_id].get('as_media'):
                 self.__as_doc = False
-            self.__lprefix = user_data[user_id].get('lprefix')
         if not ospath.lexists(self.__thumb):
             self.__thumb = None
 
     def __msg_to_reply(self):
-        if DUMP_CHAT:= config_dict['DUMP_CHAT']:
-            msg = self.__listener.message.text if self.__listener.isPrivate else self.__listener.message.link
+        DUMP_CHAT = config_dict['DUMP_CHAT']
+        if DUMP_CHAT:
+            if self.__listener.isPrivate:
+                msg = self.__listener.message.text
+            else:
+                msg = self.__listener.message.link
             self.__sent_msg = app.send_message(DUMP_CHAT, msg, disable_web_page_preview=True)
-            if self.__listener.dmMessage and IS_USER_SESSION:
-                self.__sent_DMmsg = {'message_id' : self.__listener.dmMessage.message_id}
-            elif self.__listener.dmMessage:
-                self.__sent_DMmsg = app.get_messages(self.__listener.message.from_user.id, self.__listener.dmMessage.message_id)
-        elif self.__listener.dmMessage and not IS_USER_SESSION:
-            self.__sent_msg = app.get_messages(self.__listener.message.from_user.id, self.__listener.dmMessage.message_id)
-            self.__sent_DMmsg = None
-        else:
-            self.__sent_msg = app.get_messages(self.__listener.message.chat.id, self.__listener.uid)
-            self.__sent_DMmsg = None
-        if self.__listener.message.chat.type != 'private' and not self.__listener.dmMessage:
             self.__button = InlineKeyboardMarkup([[InlineKeyboardButton(text='Save Message', callback_data="save")]])
+        else:
+            if not self.__listener.isPrivate:
+                self.__button = InlineKeyboardMarkup([[InlineKeyboardButton(text='Save Message', callback_data="save")]])
+            self.__sent_msg = app.get_messages(self.__listener.message.chat.id, self.__listener.uid)
 
     @property
     def speed(self):

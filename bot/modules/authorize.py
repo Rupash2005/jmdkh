@@ -1,11 +1,11 @@
 from telegram.ext import CommandHandler
 
-from bot import DATABASE_URL, dispatcher, user_data
-from bot.helper.ext_utils.bot_utils import update_user_ldata
-from bot.helper.ext_utils.db_handler import DbManger
-from bot.helper.telegram_helper.bot_commands import BotCommands
-from bot.helper.telegram_helper.filters import CustomFilters
+from bot import user_data, dispatcher, DATABASE_URL
 from bot.helper.telegram_helper.message_utils import sendMessage
+from bot.helper.telegram_helper.filters import CustomFilters
+from bot.helper.telegram_helper.bot_commands import BotCommands
+from bot.helper.ext_utils.db_handler import DbManger
+from bot.helper.ext_utils.bot_utils import update_user_ldata
 
 
 def authorize(update, context):
@@ -79,13 +79,13 @@ def removeSudo(update, context):
 
 
 authorize_handler = CommandHandler(BotCommands.AuthorizeCommand, authorize,
-                                   filters=CustomFilters.owner_filter | CustomFilters.sudo_user)
+                                   filters=CustomFilters.owner_filter | CustomFilters.sudo_user, run_async=True)
 unauthorize_handler = CommandHandler(BotCommands.UnAuthorizeCommand, unauthorize,
-                                   filters=CustomFilters.owner_filter | CustomFilters.sudo_user)
+                                   filters=CustomFilters.owner_filter | CustomFilters.sudo_user, run_async=True)
 addsudo_handler = CommandHandler(BotCommands.AddSudoCommand, addSudo,
-                                   filters=CustomFilters.owner_filter)
+                                   filters=CustomFilters.owner_filter, run_async=True)
 removesudo_handler = CommandHandler(BotCommands.RmSudoCommand, removeSudo,
-                                   filters=CustomFilters.owner_filter)
+                                   filters=CustomFilters.owner_filter, run_async=True)
 
 dispatcher.add_handler(authorize_handler)
 dispatcher.add_handler(unauthorize_handler)

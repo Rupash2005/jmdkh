@@ -1,24 +1,16 @@
-from json import loads as jsonloads
-from math import ceil
-from os import listdir, makedirs, mkdir
-from os import path as ospath
-from os import remove as osremove
-from os import rmdir, walk
-from re import I
-from re import split as re_split
-from shutil import disk_usage, rmtree
-from subprocess import Popen, check_output
-from subprocess import run as srun
+from os import remove as osremove, path as ospath, mkdir, walk, listdir, rmdir, makedirs
 from sys import exit as sysexit
-from time import time
-
-from magic import Magic
+from json import loads as jsonloads
+from shutil import rmtree
 from PIL import Image
+from magic import Magic
+from subprocess import run as srun, check_output, Popen
+from time import time
+from math import ceil
+from re import split as re_split, I
 
-from bot import (DOWNLOAD_DIR, LOGGER, MAX_SPLIT_SIZE, app, aria2, config_dict,
-                 get_client, user_data)
 from bot.helper.ext_utils.exceptions import NotSupportedExtractionArchive
-from bot.helper.ext_utils.telegraph_helper import telegraph
+from bot import aria2, app, LOGGER, DOWNLOAD_DIR, get_client, MAX_SPLIT_SIZE, config_dict
 
 ARCH_EXT = [".tar.bz2", ".tar.gz", ".bz2", ".gz", ".tar.xz", ".tar", ".tbz2", ".tgz", ".lzma2",
             ".zip", ".7z", ".z", ".rar", ".iso", ".wim", ".cab", ".apm", ".arj", ".chm",
@@ -59,7 +51,6 @@ def clean_all():
     aria2.remove_all(True)
     get_client().torrents_delete(torrent_hashes="all")
     app.stop()
-    telegraph.revoke_access_token()
     try:
         rmtree(DOWNLOAD_DIR)
     except:
@@ -137,11 +128,8 @@ def split_file(path, size, file_, dirpath, split_size, listener, start_time=0, i
         dirpath = f"{dirpath}/splited_files_mltb"
         if not ospath.exists(dirpath):
             mkdir(dirpath)
-    user_id = listener.message.from_user.id
-    user_dict = user_data.get(user_id, False)
-    leech_split_size = (user_dict and user_dict.get('split_size')) or config_dict['LEECH_SPLIT_SIZE']
-    parts = ceil(size/leech_split_size)
-    if ((user_dict and user_dict.get('equal_splits')) or config_dict['EQUAL_SPLITS']) and not inLoop:
+    parts = ceil(size/config_dict['LEECH_SPLIT_SIZE'])
+    if config_dict['EQUAL_SPLITS'] and not inLoop:
         split_size = ceil(size/parts) + 1000
     if get_media_streams(path)[0]:
         duration = get_media_info(path)[0]
@@ -272,18 +260,3 @@ def get_media_streams(path):
             is_audio = True
 
     return is_video, is_audio
-
-def check_storage_threshold(size: int, arch=False, alloc=False):
-    STORAGE_THRESHOLD = config_dict['STORAGE_THRESHOLD']
-    if not alloc:
-        if not arch:
-            if disk_usage(DOWNLOAD_DIR).free - size < STORAGE_THRESHOLD * 1024**3:
-                return False
-        elif disk_usage(DOWNLOAD_DIR).free - (size * 2) < STORAGE_THRESHOLD * 1024**3:
-            return False
-    elif not arch:
-        if disk_usage(DOWNLOAD_DIR).free < STORAGE_THRESHOLD * 1024**3:
-            return False
-    elif disk_usage(DOWNLOAD_DIR).free - size < STORAGE_THRESHOLD * 1024**3:
-        return False
-    return True

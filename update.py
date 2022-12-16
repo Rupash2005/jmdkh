@@ -1,6 +1,8 @@
 from logging import FileHandler, StreamHandler, INFO, basicConfig, error as log_error, info as log_info
-from os import path as ospath, environ
+from os import path as ospath, environ, remove
+from platform import machine
 from subprocess import run as srun
+from requests import get as rget
 from dotenv import load_dotenv
 from pymongo import MongoClient
 
@@ -40,28 +42,46 @@ if DATABASE_URL:
         environ['UPSTREAM_BRANCH'] = config_dict['UPSTREAM_BRANCH']
     conn.close()
 
+load_dotenv('config.env', override=True)
+
 UPSTREAM_REPO = environ.get('UPSTREAM_REPO', '')
 if len(UPSTREAM_REPO) == 0:
-   UPSTREAM_REPO = None
+    UPSTREAM_REPO = 'https://github.com/junedkh/jmdkh-mltb'
 
 UPSTREAM_BRANCH = environ.get('UPSTREAM_BRANCH', '')
 if len(UPSTREAM_BRANCH) == 0:
     UPSTREAM_BRANCH = 'master'
 
-if UPSTREAM_REPO:
-    if ospath.exists('.git'):
-        srun(["rm", "-rf", ".git"])
+if ospath.exists('.git'):
+    srun(["rm", "-rf", ".git"])
 
-    update = srun([f"git init -q \
-                     && git config --global user.email jmdkh007@gmail.com \
-                     && git config --global user.name jmdkh \
-                     && git add . \
-                     && git commit -sm update -q \
-                     && git remote add origin {UPSTREAM_REPO} \
-                     && git fetch origin -q \
-                     && git reset --hard origin/{UPSTREAM_BRANCH} -q"], shell=True)
+update = srun([f"git init -q \
+                    && git config --global user.email kjuned007@gmail.com \
+                    && git config --global user.name junedkh \
+                    && git add . \
+                    && git commit -sm update -q \
+                    && git remote add origin {UPSTREAM_REPO} \
+                    && git fetch origin -q \
+                    && git reset --hard origin/{UPSTREAM_BRANCH} -q"], shell=True)
 
-    if update.returncode == 0:
-        log_info('Successfully updated with latest commit from UPSTREAM_REPO')
+if update.returncode == 0:
+    srun(["pip3","install","-r","requirements.txt"])
+    log_info('Successfully updated with latest commit from UPSTREAM_REPO')
+else:
+    log_error('Something went wrong while updating, check UPSTREAM_REPO if valid or not!')
+
+try:
+    res = rget(f"https://github.com/junedkh/jmdkh-mltb/releases/latest/download/jmdkh_mtlb_{machine()}.zip")
+    if res.status_code == 200:
+        log_info("Downloading important files....")
+        with open('jmdkh.zip', 'wb+') as f:
+            f.write(res.content)
+        log_info("Extracting important files....")
+        srun(["unzip", "-q", "-o", "jmdkh.zip"])
+        srun(["chmod", "-R", "777", "bot"])
+        log_info("Ready to Start!")
+        remove("jmdkh.zip")
     else:
-        log_error('Something went wrong while updating, check UPSTREAM_REPO if valid or not!')
+        log_error(f"Failed to download jmdkh.zip, link got HTTP response: {res.status_code}")
+except Exception as e:
+    log_error(f"Release url : {e}")

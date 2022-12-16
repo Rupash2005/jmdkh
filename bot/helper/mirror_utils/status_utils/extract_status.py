@@ -1,9 +1,7 @@
 from time import time
 
 from bot import DOWNLOAD_DIR, LOGGER
-from bot.helper.ext_utils.bot_utils import (MirrorStatus,
-                                            get_readable_file_size,
-                                            get_readable_time)
+from bot.helper.ext_utils.bot_utils import get_readable_file_size, MirrorStatus, get_readable_time
 from bot.helper.ext_utils.fs_utils import get_path_size
 
 
@@ -16,6 +14,7 @@ class ExtractStatus:
         self.__uid = self.__listener.uid
         self.__start_time = time()
         self.message = self.__listener.message
+        self.__mode = self.__listener.mode
 
     def gid(self):
         return self.__gid
@@ -79,4 +78,4 @@ class ExtractStatus:
                 or self.message.from_user.id
 
     def mode(self):
-        return self.__listener.mode
+        return self.__mode

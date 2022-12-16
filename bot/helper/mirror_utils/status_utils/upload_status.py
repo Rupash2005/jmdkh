@@ -1,8 +1,5 @@
+from bot.helper.ext_utils.bot_utils import MirrorStatus, get_readable_file_size, get_readable_time
 from pkg_resources import get_distribution
-
-from bot.helper.ext_utils.bot_utils import (MirrorStatus,
-                                            get_readable_file_size,
-                                            get_readable_time)
 
 engine_ = f"Google Api v{get_distribution('google-api-python-client').version}"
 
@@ -12,7 +9,7 @@ class UploadStatus:
         self.__size = size
         self.__gid = gid
         self.message = listener.message
-        self.__listener = listener
+        self.__mode = listener.mode
 
     def processed_bytes(self):
         return self.__obj.processed_bytes
@@ -70,4 +67,4 @@ class UploadStatus:
                 or self.message.from_user.id
 
     def mode(self):
-        return self.__listener.mode
+        return self.__mode

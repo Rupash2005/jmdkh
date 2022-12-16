@@ -1,14 +1,13 @@
-from contextlib import redirect_stdout
-from io import BytesIO, StringIO
-from os import chdir, getcwd, path
-from textwrap import indent
+from os import path as ospath, getcwd, chdir
 from traceback import format_exc
-
+from textwrap import indent
+from io import StringIO, BytesIO
 from telegram.ext import CommandHandler
+from contextlib import redirect_stdout
 
-from bot import LOGGER, dispatcher
-from bot.helper.telegram_helper.bot_commands import BotCommands
 from bot.helper.telegram_helper.filters import CustomFilters
+from bot.helper.telegram_helper.bot_commands import BotCommands
+from bot import LOGGER, dispatcher
 
 namespaces = {}
 
@@ -65,7 +64,7 @@ def do(func, bot, update):
 
     chdir(getcwd())
     with open(
-            path.join(getcwd(),
+            ospath.join(getcwd(),
                          'bot/modules/temp.txt'),
             'w') as temp:
         temp.write(body)
@@ -111,9 +110,9 @@ def clear(update, context):
         del namespaces[update.message.chat_id]
     send("Cleared locals.", bot, update)
 
-eval_handler = CommandHandler(BotCommands.EvalCommand, evaluate, filters=CustomFilters.owner_filter)
-exec_handler = CommandHandler(BotCommands.ExecCommand, execute, filters=CustomFilters.owner_filter)
-clear_handler = CommandHandler(BotCommands.ClearLocalsCommand, clear, filters=CustomFilters.owner_filter)
+eval_handler = CommandHandler(BotCommands.EvalCommand, evaluate, filters=CustomFilters.owner_filter, run_async=True)
+exec_handler = CommandHandler(BotCommands.ExecCommand, execute, filters=CustomFilters.owner_filter, run_async=True)
+clear_handler = CommandHandler(BotCommands.ClearLocalsCommand, clear, filters=CustomFilters.owner_filter, run_async=True)
 
 dispatcher.add_handler(eval_handler)
 dispatcher.add_handler(exec_handler)

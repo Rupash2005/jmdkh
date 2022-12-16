@@ -1,8 +1,5 @@
+from bot.helper.ext_utils.bot_utils import MirrorStatus, get_readable_file_size, get_readable_time
 from pkg_resources import get_distribution
-
-from bot.helper.ext_utils.bot_utils import (MirrorStatus,
-                                            get_readable_file_size,
-                                            get_readable_time)
 
 engine_ = f"Google Api v{get_distribution('google-api-python-client').version}"
 
@@ -11,8 +8,8 @@ class GdDownloadStatus:
         self.__obj = obj
         self.__size = size
         self.__gid = gid
-        self.__listener = listener
         self.message = listener.message
+        self.__mode = listener.mode
 
     def processed_bytes(self):
         return self.__obj.processed_bytes
@@ -40,9 +37,6 @@ class GdDownloadStatus:
 
     def progress(self):
         return f'{round(self.progress_raw(), 2)}%'
-
-    def listener(self):
-        return self.__listener
 
     def speed_raw(self):
         """
@@ -73,4 +67,4 @@ class GdDownloadStatus:
                 or self.message.from_user.id
 
     def mode(self):
-        return self.__listener.mode
+        return self.__mode
