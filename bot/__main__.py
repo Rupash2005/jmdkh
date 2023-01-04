@@ -25,15 +25,15 @@ from bot.modules import (authorize, bot_settings, bt_select, cancel_mirror,
                          eval, mirror_leech, mirror_status, rmdb, rss,
                          save_message, search, shell, users_settings, ytdlp, anonymous)
 
-if path.exists('.git'):
-    last_commit = check_output(["git log -1 --date=short --pretty=format:'%cd <b>From</b> %cr'"], shell=True).decode()
-else:
-    last_commit = 'No UPSTREAM_REPO'
 
 def stats(update, context):
     total, used, free, disk = disk_usage('/')
     swap = swap_memory()
     memory = virtual_memory()
+    if path.exists('.git'):
+        last_commit = check_output(["git log -1 --date=short --pretty=format:'%cd <b>From</b> %cr'"], shell=True).decode()
+    else:
+        last_commit = 'No UPSTREAM_REPO'
     stats = f'<b>Commit Date</b>: {last_commit}\n\n'\
             f'<b>Bot Uptime</b>: {get_readable_time(time() - botStartTime)}\n'\
             f'<b>OS Uptime</b>: {get_readable_time(time() - boot_time())}\n\n'\
@@ -90,7 +90,7 @@ def log(update, context):
     sendLogFile(context.bot, update.message)
 
 help_string = f'''
-NOTE: Try each command without any perfix to see more detalis.
+NOTE: Try each command without any argument to see more detalis.
 /{BotCommands.MirrorCommand[0]} or /{BotCommands.MirrorCommand[1]}: Start mirroring to Google Drive.
 /{BotCommands.ZipMirrorCommand[0]} or /{BotCommands.ZipMirrorCommand[1]}: Start mirroring and upload the file/folder compressed with zip extension.
 /{BotCommands.UnzipMirrorCommand[0]} or /{BotCommands.UnzipMirrorCommand[1]}: Start mirroring and upload the file/folder extracted from any archive extension.
@@ -115,7 +115,7 @@ NOTE: Try each command without any perfix to see more detalis.
 /{BotCommands.BtSelectCommand}: Select files from torrents by gid or reply.
 /{BotCommands.CategorySelect}: Change upload category for Google Drive.
 /{BotCommands.CancelMirror}: Cancel task by gid or reply.
-/{BotCommands.CancelAllCommand} : Cancel all tasks which added by you.
+/{BotCommands.CancelAllCommand[0]} : Cancel all tasks which added by you {BotCommands.CancelAllCommand[1]} to in bots.
 /{BotCommands.ListCommand} [query]: Search in Google Drive(s).
 /{BotCommands.SearchCommand} [query]: Search for torrents with API.
 /{BotCommands.StatusCommand[0]} or /{BotCommands.StatusCommand[1]}: Shows a status of all the downloads.
@@ -126,7 +126,8 @@ NOTE: Try each command without any perfix to see more detalis.
 /{BotCommands.UsersCommand}: show users settings (Only Owner & Sudo).
 /{BotCommands.AddSudoCommand}: Add sudo user (Only Owner).
 /{BotCommands.RmSudoCommand}: Remove sudo users (Only Owner).
-/{BotCommands.RestartCommand}: Restart and update the bot (Only Owner & Sudo).
+/{BotCommands.RestartCommand[0]}: Restart and update the bot (Only Owner & Sudo).
+/{BotCommands.RestartCommand[1]}: Restart all bots and update the bot (Only Owner & Sudo).
 /{BotCommands.LogCommand}: Get a log file of the bot. Handy for getting crash reports (Only Owner & Sudo).
 /{BotCommands.ShellCommand}: Run shell commands (Only Owner).
 /{BotCommands.EvalCommand}: Run Python Code Line | Lines (Only Owner).
@@ -164,7 +165,8 @@ def main():
                         if len(msg.encode()) > 4000:
                             if 'Restarted Successfully!' in msg and cid == chat_id:
                                 try:
-                                    bot.editMessageText(msg, chat_id, msg_id)
+                                    bot.editMessageText('Restarted Successfully!', chat_id, msg_id)
+                                    bot.sendMessage(chat_id, msg, reply_to_message_id=msg_id)
                                 except:
                                     pass
                                 remove(".restartmsg")
@@ -176,7 +178,8 @@ def main():
                             msg = ''
                 if 'Restarted Successfully!' in msg and cid == chat_id:
                     try:
-                        bot.editMessageText(msg, chat_id, msg_id)
+                        bot.editMessageText('Restarted Successfully!', chat_id, msg_id)
+                        bot.sendMessage(chat_id, msg, reply_to_message_id=msg_id)
                     except:
                         pass
                     remove(".restartmsg")

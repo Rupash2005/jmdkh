@@ -7,14 +7,12 @@ from telegram.ext import CallbackQueryHandler, CommandHandler
 
 from bot import (CATEGORY_NAMES, DATABASE_URL, LOGGER, Interval, btn_listener,
                  config_dict, dispatcher, download_dict, download_dict_lock)
-from bot.helper.ext_utils.bot_utils import (check_buttons, check_user_tasks,
-                                            extra_btns, get_category_btns,
+from bot.helper.ext_utils.bot_utils import (check_user_tasks, extra_btns,
                                             get_readable_file_size,
                                             get_readable_time, is_gdrive_link,
                                             new_thread)
 from bot.helper.ext_utils.db_handler import DbManger
 from bot.helper.ext_utils.jmdkh_utils import extract_link
-from bot.helper.ext_utils.shortener import short_url
 from bot.helper.mirror_utils.status_utils.clone_status import CloneStatus
 from bot.helper.mirror_utils.upload_utils.gdriveTools import GoogleDriveHelper
 from bot.helper.telegram_helper.bot_commands import BotCommands
@@ -34,7 +32,21 @@ from bot.helper.telegram_helper.message_utils import (anno_checker,
                                                       update_all_messages)
 
 
+def _get_category_btns(time_out, msg_id, c_index):
+    text = '<b>Select the category where you want to upload</b>'
+    text += f'\n<b>Upload</b>: to Drive in {CATEGORY_NAMES[c_index]} folder'
+    text += f'<u>\n\nYou have {get_readable_time(time_out)} to select the mode</u>'
+    button = ButtonMaker()
+    for i, _name in enumerate(CATEGORY_NAMES):
+        button.sbutton(f'{_name}{" ✅" if _name == CATEGORY_NAMES[c_index] else ""}', f'clone scat {msg_id} {i}')
+    button.sbutton('Cancel', f"clone cancel {msg_id}", 'footer')
+    button.sbutton(f'Start ({get_readable_time(time_out)})', f'clone start {msg_id}', 'footer')
+    return text, button.build_menu(3)
+
 def _clone(message, bot):
+    if not config_dict['GDRIVE_ID']:
+        sendMessage('GDRIVE_ID not Provided!', bot, message)
+        return
     args = message.text.split()
     reply_to = message.reply_to_message
     link = ''
@@ -51,6 +63,19 @@ def _clone(message, bot):
             tag = f"@{message.from_user.username}"
         else:
             tag = message.from_user.mention_html(message.from_user.first_name)
+
+    def __run_multi():
+        if multi > 1:
+            sleep(4)
+            nextmsg = type('nextmsg', (object, ), {'chat_id': message.chat_id,
+                                                   'message_id': message.reply_to_message.message_id + 1})
+            cmsg = message.text.split()
+            cmsg[1] = f"{multi - 1}"
+            nextmsg = sendMessage(" ".join(cmsg), bot, nextmsg)
+            nextmsg.from_user.id = message.from_user.id
+            sleep(4)
+            Thread(target=_clone, args=(nextmsg, bot)).start()
+
     if reply_to:
         if len(link) == 0:
             link = reply_to.text.split(maxsplit=1)[0].strip()
@@ -59,8 +84,8 @@ def _clone(message, bot):
         else:
             tag = reply_to.from_user.mention_html(reply_to.from_user.first_name)
     if not is_gdrive_link(link) or (link.strip().isdigit() and multi == 0):
-        msg_ = 'Send Gdrive link along with command or by replying to the link by command' \
-            f'\n\n<b>Multi links only by replying to first link/file:</b>\n<code>/{BotCommands.CloneCommand}</code> 10(number of links/files)'
+        msg_ = "Send Gdrive link along with command or by replying to the link by command\n"
+        msg_ += "\n<b>Multi links only by replying to first link:</b>\n<code>/cmd</code> 10(number of links)"
         return sendMessage(msg_, bot, message)
     if message.from_user.id in [1087968824, 136817688]:
         message.from_user.id = anno_checker(message)
@@ -68,14 +93,16 @@ def _clone(message, bot):
             return
     if not isAdmin(message):
         if message_filter(bot, message, tag):
+            __run_multi()
             return
         if DATABASE_URL and config_dict['STOP_DUPLICATE_TASKS']:
             raw_url = extract_link(link)
-            exist = DbManger().check_download(raw_url)
-            if exist:
+            if exist := DbManger().check_download(raw_url):
                 _msg = f'<b>Download is already added by {exist["tag"]}</b>\n\nCheck the download status in @{exist["botname"]}\n\n<b>Link</b>: <code>{exist["_id"]}</code>'
                 delete_links(bot, message)
-                return sendMessage(_msg, bot, message)
+                sendMessage(_msg, bot, message)
+                __run_multi()
+                return
         if forcesub(bot, message, tag):
             return
         if (maxtask:= config_dict['USER_MAX_TASKS']) and check_user_tasks(message.from_user.id, maxtask):
@@ -83,9 +110,7 @@ def _clone(message, bot):
     time_out = 30
     listner = [bot, message, c_index, time_out, time(), tag, link, raw_url]
     if len(CATEGORY_NAMES) > 1:
-        if checked:= check_buttons():
-            return sendMessage(checked, bot, message)
-        text, btns = get_category_btns('clone', time_out, msg_id, c_index)
+        text, btns = _get_category_btns(time_out, msg_id, c_index)
         btn_listener[msg_id] = listner
         chat_restrict(message)
         engine = sendMessage(text, bot, message, btns)
@@ -93,15 +118,7 @@ def _clone(message, bot):
     else:
         chat_restrict(message)
         start_clone(listner)
-    if multi > 1:
-        sleep(4)
-        nextmsg = type('nextmsg', (object, ), {'chat_id': message.chat_id, 'message_id': message.reply_to_message.message_id + 1})
-        cmsg = message.text.split()
-        cmsg[1] = f"{multi - 1}"
-        nextmsg = sendMessage(" ".join(cmsg), bot, nextmsg)
-        nextmsg.from_user.id = message.from_user.id
-        sleep(4)
-        Thread(target=_clone, args=(nextmsg, bot)).start()
+    __run_multi()
 
 @new_thread
 def _auto_start_dl(msg, msg_id, time_out):
@@ -122,12 +139,12 @@ def start_clone(listner):
     link = listner[6]
     raw_url = listner[7]
     if config_dict['ENABLE_DM'] and message.chat.type == message.chat.SUPERGROUP:
-        dmMessage = sendDmMessage(link, bot, message)
+        dmMessage = sendDmMessage(bot, message)
         if not dmMessage:
             return
     else:
         dmMessage = None
-    logMessage = None if message.chat.type == message.chat.SUPERGROUP else sendLogMessage(link, bot, message)
+    logMessage = sendLogMessage(bot, message)
     gd = GoogleDriveHelper(user_id=message.from_user.id)
     res, size, name, files = gd.helper(link)
     if res != "":
@@ -181,22 +198,19 @@ def start_clone(listner):
     else:
         buttons = ButtonMaker()
         if not config_dict['DISABLE_DRIVE_LINK']:
-            durl = short_url(links_dict['durl'])
-            buttons.buildbutton("🔐 Drive Link", durl)
+            buttons.buildbutton("🔐 Drive Link", links_dict['durl'])
         if index:= links_dict.get('index'):
-            index = short_url(index)
             buttons.buildbutton("🚀 Index Link", index)
         if view:= links_dict.get('view'):
-            view = short_url(view)
             buttons.buildbutton('💻 View Link', view)
-        buttons = extra_btns(buttons)
+        __btns = extra_btns(buttons)
         if dmMessage:
-            sendMessage(f"{result + cc}", bot, dmMessage, buttons.build_menu(2))
+            sendMessage(f"{result + cc}", bot, dmMessage, __btns.build_menu(2))
             sendMessage(f"{result + cc}\n\n<b>Links has been sent in your DM.</b>", bot, message)
         else:
             if message.chat.type != 'private':
-                buttons.sbutton("Save This Message", 'save', 'footer')
-            sendMessage(f"{result + cc}", bot, message, buttons.build_menu(2))
+                __btns.sbutton("Save This Message", 'save', 'footer')
+            sendMessage(f"{result + cc}", bot, message, __btns.build_menu(2))
         if logMessage:
             if config_dict['DISABLE_DRIVE_LINK']:
                 buttons.buildbutton("🔐 Drive Link", links_dict['durl'], 'header')
@@ -235,7 +249,7 @@ def clone_confirm(update, context):
         message.delete()
         return start_clone(listnerInfo)
     time_out = listnerInfo[3] - (time() - listnerInfo[4])
-    text, btns = get_category_btns('clone', time_out, msg_id, listnerInfo[2])
+    text, btns = _get_category_btns(time_out, msg_id, listnerInfo[2])
     editMessage(text, message, btns)
 
 @new_thread

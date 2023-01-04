@@ -58,6 +58,7 @@ def add_qb_torrent(link, path, listener, ratio, seed_time):
         if len(tor_info) > 0:
             sendMessage("This Torrent already added!", listener.bot, listener.message)
             return
+        listener.selectCategory()
         if link.startswith('magnet:'):
             op = client.torrents_add(link, save_path=path, ratio_limit=ratio, seeding_time_limit=seed_time)
         else:
@@ -136,14 +137,14 @@ def __remove_torrent(client, hash_):
         if hash_ in SIZE_CHECKED:
             SIZE_CHECKED.remove(hash_)
 
-def __onDownloadError(err, client, tor):
+def __onDownloadError(err, client, tor, button=None):
     LOGGER.info(f"Cancelling Download: {tor.name}")
     client.torrents_pause(torrent_hashes=tor.hash)
     sleep(0.3)
     download = getDownloadByGid(tor.hash[:12])
     try:
         listener = download.listener()
-        listener.onDownloadError(err)
+        listener.onDownloadError(err, button)
     except:
         pass
     __remove_torrent(client, tor.hash)
@@ -177,8 +178,8 @@ def __stop_duplicate(client, tor):
             if qbname:
                 qbmsg, button = GoogleDriveHelper().drive_list(qbname, True)
                 if qbmsg:
-                    __onDownloadError("File/Folder is already available in Drive.\n", client, tor)
-                    return sendMessage("Here are the search results:", listener.bot, listener.message, button)
+                    __onDownloadError("File/Folder is already available in Drive.\nHere are the search results:\n", client, tor, button)
+                    return
     except:
         pass
 
@@ -188,6 +189,12 @@ def __size_checked(client, tor):
         listener = download.listener()
         size = tor.size
         limit_exceeded = ''
+        if not limit_exceeded and (STORAGE_THRESHOLD:= config_dict['STORAGE_THRESHOLD']):
+            limit = STORAGE_THRESHOLD * 1024**3
+            arch = any([listener.isZip, listener.extract])
+            acpt = check_storage_threshold(size, limit, arch)
+            if not acpt:
+                limit_exceeded = f'You must leave {get_readable_file_size(limit)} free storage.'
         if not limit_exceeded and (TORRENT_LIMIT:= config_dict['TORRENT_LIMIT']):
             limit = TORRENT_LIMIT * 1024**3
             if size > limit:
@@ -199,13 +206,6 @@ def __size_checked(client, tor):
         if limit_exceeded:
             fmsg = f"{limit_exceeded}.\nYour File/Folder size is {get_readable_file_size(size)}"
             return __onDownloadError(fmsg, client, tor)
-        if STORAGE_THRESHOLD:= config_dict['STORAGE_THRESHOLD']:
-            arch = any([listener.isZip, listener.extract])
-            acpt = check_storage_threshold(size, arch)
-            if not acpt:
-                msg = f'You must leave {STORAGE_THRESHOLD}GB free storage.'
-                msg += f'\nYour File/Folder size is {get_readable_file_size(size)}'
-                return __onDownloadError(msg, client, tor)
     except:
         pass
 

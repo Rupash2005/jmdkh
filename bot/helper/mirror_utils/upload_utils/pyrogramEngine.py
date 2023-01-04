@@ -1,16 +1,19 @@
+from copy import copy
 from logging import ERROR, getLogger
 from os import path as ospath
 from os import remove, rename, walk
-from re import sub
+from re import search, sub
 from threading import RLock
 from time import sleep, time
 
 from PIL import Image
 from pyrogram.errors import FloodWait, RPCError
-from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from pyrogram.types import (InlineKeyboardButton, InlineKeyboardMarkup,
+                            InputMediaDocument, InputMediaVideo)
+from telegram import InputMediaDocument as ptbInputMediaDocument
+from telegram import InputMediaVideo as ptbInputMediaVideo
 
-from bot import (GLOBAL_EXTENSION_FILTER, IS_USER_SESSION, app, config_dict,
-                 user_data)
+from bot import GLOBAL_EXTENSION_FILTER, app, config_dict, user_data
 from bot.helper.ext_utils.bot_utils import get_readable_file_size
 from bot.helper.ext_utils.fs_utils import (clean_unwanted, get_media_info,
                                            get_media_streams, take_ss)
@@ -32,7 +35,6 @@ class TgUploader:
         self.__start_time = time()
         self.__total_files = 0
         self.__is_cancelled = False
-        self.__as_doc = config_dict['AS_DOCUMENT']
         self.__thumb = f"Thumbnails/{listener.message.from_user.id}.jpg"
         self.__msgs_dict = {}
         self.__corrupted = 0
@@ -40,20 +42,23 @@ class TgUploader:
         self.__is_corrupted = False
         self.__size = size
         self.__button = None
-        self.__lprefix = None
+        self.__in_media_group = False
+        self.__media_dict = {'videos': {}, 'documents': {}}
+        self.__sent_DMmsg = None
         self.__msg_to_reply()
         self.__user_settings()
 
-    def upload(self, o_files):
-        for dirpath, subdir, files in sorted(walk(self.__path)):
+    def upload(self, o_files, m_size):
+        for dirpath, _, files in sorted(walk(self.__path)):
             for file_ in sorted(files):
-                if file_ in o_files:
+                up_path = ospath.join(dirpath, file_)
+                f_size = ospath.getsize(up_path)
+                if self.__listener.seed and file_ in o_files and f_size in m_size:
                     continue
                 if not file_.lower().endswith(tuple(GLOBAL_EXTENSION_FILTER)):
-                    up_path = ospath.join(dirpath, file_)
                     self.__total_files += 1
                     try:
-                        if ospath.getsize(up_path) == 0:
+                        if f_size == 0:
                             LOGGER.error(f"{up_path} size is zero, telegram don't upload zero size files")
                             self.__corrupted += 1
                             continue
@@ -62,17 +67,36 @@ class TgUploader:
                             return
                         LOGGER.error(e)
                         continue
+                    if self.__in_media_group:
+                        group_lists = [x for v in self.__media_dict.values() for x in v.keys()]
+                        match = search(r'.+(?=\.0*\d+$)|.+(?=\.part\d+\..+)', file_)
+                        if match and match.group(0) not in group_lists:
+                            for key, value in list(self.__media_dict.items()):
+                                for pname, msgs in list(value.items()):
+                                    if len(msgs) > 1:
+                                        self.__send_media_group(pname, key, msgs)
+                    self.__in_media_group = False
                     self.__upload_file(up_path, file_, dirpath)
                     if self.__is_cancelled:
                         return
-                    if (not self.__listener.isPrivate or config_dict['DUMP_CHAT']) and not self.__is_corrupted:
+                    if (not self.__listener.isPrivate or config_dict['DUMP_CHAT']) and not self.__is_corrupted and \
+                          not self.__in_media_group:
                         self.__msgs_dict[self.__sent_msg.link] = file_
                     self._last_uploaded = 0
                     sleep(1)
+        for key, value in list(self.__media_dict.items()):
+            for pname, msgs in list(value.items()):
+                if len(msgs) > 1:
+                    self.__send_media_group(pname, key, msgs)
+                elif not self.__listener.isPrivate or config_dict['DUMP_CHAT']:
+                    self.__msgs_dict[msgs[0].link] = msgs[0].caption
         if self.__listener.seed and not self.__listener.newDir:
             clean_unwanted(self.__path)
+        if self.__total_files == 0:
+            self.__listener.onUploadError("No files to upload. In case you have filled EXTENSION_FILTER, then check if all file have those extensions or not.")
+            return
         if self.__total_files <= self.__corrupted:
-            self.__listener.onUploadError('Files Corrupted. Check logs!')
+            self.__listener.onUploadError('Files Corrupted or unable to upload. Check logs!')
             return
         LOGGER.info(f"Leech Completed: {self.name}")
         size = get_readable_file_size(self.__size)
@@ -159,18 +183,28 @@ class TgUploader:
                                                                  disable_notification=True,
                                                                  reply_markup=self.__button,
                                                                  progress=self.__upload_progress)
-            if self.__listener.dmMessage and self.__sent_DMmsg:
+
+            if self.__media_group and (self.__as_doc or notMedia or is_video):
+                if match := search(r'.+(?=\.0*\d+$)|.+(?=\.part\d+\..+)', file_):
+                    pname = match.group(0)
+                    key = 'documents' if self.__as_doc or notMedia else 'videos'
+                    if pname in self.__media_dict[key].keys():
+                        self.__media_dict[key][pname].append(self.__sent_msg)
+                    else:
+                        self.__media_dict[key][pname] = [self.__sent_msg]
+                    msgs = self.__media_dict[key][pname]
+                    if len(msgs) == 10:
+                        self.__send_media_group(pname, key, msgs)
+                    else:
+                        self.__in_media_group = True
+
+            if not self.__in_media_group and self.__sent_DMmsg:
                 sleep(1)
-                if IS_USER_SESSION:
-                    self.__sent_DMmsg = self.__listener.bot.copy_message(
-                    chat_id=self.__listener.message.from_user.id,
-                    from_chat_id=self.__sent_msg.chat.id,
-                    message_id=self.__sent_msg.id,
-                    reply_to_message_id=self.__sent_DMmsg['message_id'])
-                else:
-                    self.__sent_DMmsg = self.__sent_msg.copy(
-                        chat_id=self.__sent_DMmsg.chat.id,
-                        reply_to_message_id=self.__sent_DMmsg.id)
+                __ptb = self.__sent_DMmsg.reply_copy(
+                from_chat_id=self.__sent_msg.chat.id,
+                quote=True,
+                message_id=self.__sent_msg.id)
+                self.__sent_DMmsg.message_id = __ptb['message_id']
         except FloodWait as f:
             LOGGER.warning(str(f))
             sleep(f.value)
@@ -182,7 +216,7 @@ class TgUploader:
             LOGGER.error(f"{err} Path: {up_path}")
             self.__corrupted += 1
             self.__is_corrupted = True
-        if self.__thumb is None and thumb and ospath.lexists(thumb):
+        if not self.__thumb and thumb and ospath.lexists(thumb):
             remove(thumb)
         if not self.__is_cancelled and \
                    (not self.__listener.seed or self.__listener.newDir or dirpath.endswith("splited_files_mltb")):
@@ -202,12 +236,10 @@ class TgUploader:
 
     def __user_settings(self):
         user_id = self.__listener.message.from_user.id
-        if user_id in user_data:
-            if user_data[user_id].get('as_doc'):
-                self.__as_doc = True
-            elif user_data[user_id].get('as_media'):
-                self.__as_doc = False
-            self.__lprefix = user_data[user_id].get('lprefix')
+        user_dict = user_data.get(user_id, {})
+        self.__as_doc = user_dict.get('as_doc') or config_dict['AS_DOCUMENT']
+        self.__media_group = user_dict.get('media_group') or config_dict['MEDIA_GROUP']
+        self.__lprefix = user_dict.get('lprefix') or config_dict['LEECH_FILENAME_PREFIX']
         if not ospath.lexists(self.__thumb):
             self.__thumb = None
 
@@ -215,18 +247,55 @@ class TgUploader:
         if DUMP_CHAT:= config_dict['DUMP_CHAT']:
             msg = self.__listener.message.text if self.__listener.isPrivate else self.__listener.message.link
             self.__sent_msg = app.send_message(DUMP_CHAT, msg, disable_web_page_preview=True)
-            if self.__listener.dmMessage and IS_USER_SESSION:
-                self.__sent_DMmsg = {'message_id' : self.__listener.dmMessage.message_id}
-            elif self.__listener.dmMessage:
-                self.__sent_DMmsg = app.get_messages(self.__listener.message.from_user.id, self.__listener.dmMessage.message_id)
-        elif self.__listener.dmMessage and not IS_USER_SESSION:
+            if self.__listener.dmMessage:
+                self.__sent_DMmsg = copy(self.__listener.dmMessage)
+        elif self.__listener.dmMessage:
             self.__sent_msg = app.get_messages(self.__listener.message.from_user.id, self.__listener.dmMessage.message_id)
-            self.__sent_DMmsg = None
         else:
             self.__sent_msg = app.get_messages(self.__listener.message.chat.id, self.__listener.uid)
-            self.__sent_DMmsg = None
         if self.__listener.message.chat.type != 'private' and not self.__listener.dmMessage:
             self.__button = InlineKeyboardMarkup([[InlineKeyboardButton(text='Save Message', callback_data="save")]])
+
+
+    def __get_input_media(self, pname, key):
+        rlist = []
+        for msg in self.__media_dict[key][pname]:
+            if key == 'videos':
+                input_media = InputMediaVideo(media=msg.video.file_id, caption=msg.caption)
+            else:
+                input_media = InputMediaDocument(media=msg.document.file_id, caption=msg.caption)
+            rlist.append(input_media)
+        return rlist
+
+    def __get_ptb_input_media(self, pname, key):
+        rlist = []
+        for msg in self.__media_dict[key][pname]:
+            if key == 'videos':
+                input_media = ptbInputMediaVideo(media=msg.video.file_id, caption=msg.caption)
+            else:
+                input_media = ptbInputMediaDocument(media=msg.document.file_id, caption=msg.caption)
+            rlist.append(input_media)
+        return rlist
+
+    def __send_media_group(self, pname, key, msgs):
+        msgs_list = msgs[0].reply_to_message.reply_media_group(
+            media=self.__get_input_media(pname, key),
+            quote=True,
+            disable_notification=True)
+        for msg in msgs:
+            msg.delete()
+        if not self.__listener.isPrivate or config_dict['DUMP_CHAT']:
+            for m in msgs_list:
+                self.__msgs_dict[m.link] = f'{m.caption} (Grouped)'
+        self.__sent_msg = msgs_list[-1]
+        if self.__sent_DMmsg:
+            msgs_list = self.__sent_DMmsg.reply_media_group(
+                self.__get_ptb_input_media(pname, key),
+                quote=True,
+                disable_notification=True
+            )
+            self.__sent_DMmsg = msgs_list[-1]
+        del self.__media_dict[key][pname]
 
     @property
     def speed(self):

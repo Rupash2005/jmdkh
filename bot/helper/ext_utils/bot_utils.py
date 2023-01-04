@@ -10,8 +10,8 @@ from psutil import cpu_percent, disk_usage, virtual_memory
 from requests import request
 
 from bot import (BUTTON_NAMES, BUTTON_URLS, CATEGORY_NAMES, DOWNLOAD_DIR,
-                 botStartTime, btn_listener, config_dict, download_dict,
-                 download_dict_lock, user_data)
+                 botStartTime, config_dict, download_dict, download_dict_lock,
+                 user_data)
 from bot.helper.telegram_helper.bot_commands import BotCommands
 from bot.helper.telegram_helper.button_build import ButtonMaker
 
@@ -28,7 +28,8 @@ class MirrorStatus:
     STATUS_UPLOADING = "Upload"
     STATUS_DOWNLOADING = "Download"
     STATUS_CLONING = "Clone"
-    STATUS_WAITING = "Queue"
+    STATUS_QUEUEDL = "QueueDl"
+    STATUS_QUEUEUP = "QueueUp"
     STATUS_PAUSED = "Pause"
     STATUS_ARCHIVING = "Archive"
     STATUS_EXTRACTING = "Extract"
@@ -149,7 +150,7 @@ def get_readable_message():
                 msg += f" | <b>Time</b>: {download.seeding_time()}"
             else:
                 msg += f"\n<b>Size</b>: {download.size()}"
-            msg += f"\n<b>Source</b>: <a href='{download.message.link}'>{download.source()}</a>"
+            msg += f"\n<b>Source</b>: <a href='{download.message.link}'>{download.source}</a>"
             msg += f"\n<b>Elapsed</b>: {get_readable_time(time() - download.message.date.timestamp())}"
             if hasattr(download, 'playList'):
                 try:
@@ -157,9 +158,10 @@ def get_readable_message():
                         msg += f"\n<b>Playlist</b>: {playlist}"
                 except:
                     pass
-            msg += f"\n<b>Engine</b>: {download.engine()}"
+            msg += f"\n<b>Engine</b>: {download.engine}"
             msg += f"\n<b>Upload</b>: {download.mode()}"
-            msg += f"\n<b>Stop</b>: <code>/{BotCommands.CancelMirror} {download.gid()}</code>"
+            if download.status() != MirrorStatus.STATUS_CONVERTING:
+                msg += f"\n<b>Stop</b>: <code>/{BotCommands.CancelMirror} {download.gid()}</code>"
             msg += "\n\n"
             if STATUS_LIMIT and index == STATUS_LIMIT:
                 break
@@ -202,15 +204,15 @@ def _get_readable_message_btns(msg, bmsg):
     button = buttons.build_menu(3)
     return msg + bmsg, button
 
-def get_category_btns(query_data, time_out, msg_id, c_index):
+def get_category_btns(time_out, msg_id, c_index):
     text = '<b>Select the category where you want to upload</b>'
     text += f'\n<b>Upload</b>: to Drive in {CATEGORY_NAMES[c_index]} folder'
     text += f'<u>\n\nYou have {get_readable_time(time_out)} to select the mode</u>'
     button = ButtonMaker()
     for i, _name in enumerate(CATEGORY_NAMES):
-        button.sbutton(f'{_name}{" ✅" if _name == CATEGORY_NAMES[c_index] else ""}', f'{query_data} scat {msg_id} {i}')
-    button.sbutton('Cancel', f"{query_data} cancel {msg_id}", 'footer')
-    button.sbutton(f'Start ({get_readable_time(time_out)})', f'{query_data} start {msg_id}', 'footer')
+        button.sbutton(f'{_name}{" ✅" if _name == CATEGORY_NAMES[c_index] else ""}', f'change scat {msg_id} {i}')
+    button.sbutton('Skip', f"change cancel {msg_id}", 'footer')
+    button.sbutton(f'Done ({get_readable_time(time_out)})', f'change done {msg_id}', 'footer')
     return text, button.build_menu(3)
 
 def extra_btns(buttons):
@@ -245,10 +247,6 @@ def turn(data):
 def check_user_tasks(user_id, maxtask):
     if tasks:= getAllDownload(MirrorStatus.STATUS_DOWNLOADING, user_id, False):
         return len(tasks) >= maxtask
-
-def check_buttons():
-    if len(btn_listener) >= 3:
-        return 'Sorry, I can only handle 3 tasks at a time.'
 
 def get_readable_time(seconds: int) -> str:
     result = ''
@@ -348,11 +346,9 @@ def set_commands(bot):
         (f'{BotCommands.BtSelectCommand}', 'Select files to download only torrents'),
         (f'{BotCommands.CategorySelect}', 'Select category to upload only mirror'),
         (f'{BotCommands.CancelMirror}', 'Cancel a Task'),
-        (f'{BotCommands.CancelAllCommand}', 'Cancel all tasks which added by you'),
+        (f'{BotCommands.CancelAllCommand[0]}', f'Cancel all tasks which added by you or {BotCommands.CancelAllCommand[1]} to in bots.'),
         (f'{BotCommands.ListCommand}', 'Search in Drive'),
         (f'{BotCommands.SearchCommand}', 'Search in Torrent'),
         (f'{BotCommands.UserSetCommand}', 'Users settings'),
         (f'{BotCommands.HelpCommand}', 'Get detailed help'),
             ])
-    else:
-        bot.delete_my_commands()

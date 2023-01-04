@@ -1,4 +1,4 @@
-from os import remove
+from io import BytesIO
 from time import sleep, time
 
 from pyrogram.errors import FloodWait
@@ -80,17 +80,16 @@ def sendLogFile(bot, message):
                           reply_to_message_id=message.message_id,
                           chat_id=message.chat_id)
 
-def sendFile(bot, message, name, caption=""):
+def sendFile(bot, message, txt, fileName, caption=""):
     try:
-        with open(name, 'rb') as f:
-            bot.sendDocument(document=f, filename=f.name, reply_to_message_id=message.message_id,
-                             caption=caption, chat_id=message.chat_id)
-        remove(name)
-        return
+        with BytesIO(str.encode(txt)) as document:
+            document.name = fileName
+            return bot.sendDocument(document=document, reply_to_message_id=message.message_id,
+                                    caption=caption, chat_id=message.chat_id)
     except RetryAfter as r:
         LOGGER.warning(str(r))
         sleep(r.retry_after * 1.5)
-        return sendFile(bot, message, name, caption)
+        return sendFile(bot, message, txt, fileName, caption)
     except Exception as e:
         LOGGER.error(str(e))
         return
@@ -98,9 +97,9 @@ def sendFile(bot, message, name, caption=""):
 def auto_delete_message(bot, cmd_message=None, bot_message=None):
     if config_dict['AUTO_DELETE_MESSAGE_DURATION'] != -1:
         sleep(config_dict['AUTO_DELETE_MESSAGE_DURATION'])
-        if cmd_message is not None:
+        if cmd_message:
             deleteMessage(bot, cmd_message)
-        if bot_message is not None:
+        if bot_message:
             deleteMessage(bot, bot_message)
 
 def delete_all_messages():
@@ -120,7 +119,7 @@ def update_all_messages(force=False):
             status_reply_dict[chat_id][1] = time()
 
     msg, buttons = get_readable_message()
-    if msg is None:
+    if not msg:
         return
     with status_reply_dict_lock:
         for chat_id in status_reply_dict:
@@ -134,7 +133,7 @@ def update_all_messages(force=False):
 
 def sendStatusMessage(msg, bot):
     progress, buttons = get_readable_message()
-    if progress is None:
+    if not progress:
         return
     with status_reply_dict_lock:
         if msg.chat_id in status_reply_dict:
@@ -146,13 +145,13 @@ def sendStatusMessage(msg, bot):
         if not Interval:
             Interval.append(setInterval(config_dict['DOWNLOAD_STATUS_UPDATE_INTERVAL'], update_all_messages))
 
-def sendDmMessage(text, bot, message):
+def sendDmMessage(bot, message):
     try:
-        return bot.sendMessage(message.from_user.id, disable_notification=False, text=message.link)
+        return bot.sendMessage(message.from_user.id, disable_notification=True, text=message.link)
     except RetryAfter as r:
         LOGGER.warning(str(r))
         sleep(r.retry_after * 1.5)
-        return sendDmMessage(text, bot, message)
+        return sendDmMessage(bot, message)
     except Unauthorized:
         buttons = ButtonMaker()
         buttons.buildbutton("Start", f"{bot.link}?start=start")
@@ -162,22 +161,25 @@ def sendDmMessage(text, bot, message):
         LOGGER.error(str(e))
         return
 
-def sendLogMessage(text, bot, message):
+def sendLogMessage(bot, message):
     if not (log_chat := config_dict['LOG_CHAT']):
         return
     try:
-        return bot.sendMessage(log_chat, disable_notification=False, text=message.link)
+        return bot.sendMessage(log_chat, disable_notification=True, text=message.link or message.text)
     except RetryAfter as r:
         LOGGER.warning(str(r))
         sleep(r.retry_after * 1.5)
-        return sendLogMessage(text, bot, message)
+        return sendLogMessage(bot, message)
     except Exception as e:
         LOGGER.error(str(e))
         return
 
-def isAdmin(message):
+def isAdmin(message, user_id=None):
     if message.chat.type != message.chat.PRIVATE:
-        member = message.chat.get_member(message.from_user.id)
+        if user_id:
+            member = message.chat.get_member(user_id)
+        else:
+            member = message.chat.get_member(message.from_user.id)
         return member.status in [member.ADMINISTRATOR, member.CREATOR] or member.is_anonymous
 
 def forcesub(bot, message, tag):
@@ -189,7 +191,7 @@ def forcesub(bot, message, tag):
             continue
         chat = bot.get_chat(channel_id)
         member = chat.get_member(message.from_user.id)
-        if member.status in [member.LEFT, member.KICKED] :
+        if member.status in [member.LEFT, member.KICKED]:
             join_button[chat.title] = chat.link or chat.invite_link
     if join_button:
         btn = ButtonMaker()
@@ -223,20 +225,21 @@ def chat_restrict(message):
 
 def delete_links(bot, message):
     if config_dict['DELETE_LINKS']:
-        if message.reply_to_message:
-            deleteMessage(bot, message.reply_to_message)
+        if reply_to := message.reply_to_message:
+            deleteMessage(bot, reply_to)
         deleteMessage(bot, message)
 
 def anno_checker(message):
     user_id = message.from_user.id
+    msg_id = message.message_id
+    buttons = ButtonMaker()
     if user_id == 1087968824:
         _msg = "Group Anonymous Admin"
+        buttons.sbutton('Verify Anonymous', f'verify admin {msg_id}')
     elif user_id == 136817688:
         _msg = "Channel"
-    msg_id = message.message_id
+        buttons.sbutton('Verify Channel', f'verify channel {msg_id}')
     btn_listener[msg_id] = [True, None]
-    buttons = ButtonMaker()
-    buttons.sbutton('Verify', f'verify yes {msg_id}')
     buttons.sbutton('Cancel', f'verify no {msg_id}')
     sendMessage(f'{_msg} Verification\nIf you hit Verify! Your username and id will expose in bot logs!', message.bot, message, buttons.build_menu(2))
     user_id = None

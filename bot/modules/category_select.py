@@ -1,4 +1,4 @@
-from time import sleep, time
+from time import time
 
 from telegram.ext import CallbackQueryHandler, CommandHandler
 
@@ -13,67 +13,46 @@ from bot.helper.telegram_helper.message_utils import (anno_checker,
 
 
 def change_category(update, context):
-    if update.message.from_user.id in [1087968824, 136817688]:
-        update.message.from_user.id = anno_checker(update.message)
-        if not update.message.from_user.id:
+    message = update.message
+    if message.from_user.id in [1087968824, 136817688]:
+        message.from_user.id = anno_checker(message)
+        if not message.from_user.id:
             return
-    user_id = update.message.from_user.id
+    user_id = message.from_user.id
     if len(context.args) == 1:
         gid = context.args[0]
         dl = getDownloadByGid(gid)
         if not dl:
-            sendMessage(f"GID: <code>{gid}</code> Not Found.", context.bot, update.message)
+            sendMessage(f"GID: <code>{gid}</code> Not Found.", context.bot, message)
             return
-    elif update.message.reply_to_message:
-        mirror_message = update.message.reply_to_message
+    elif message.reply_to_message:
+        mirror_message = message.reply_to_message
         with download_dict_lock:
             if mirror_message.message_id in download_dict:
                 dl = download_dict[mirror_message.message_id]
             else:
                 dl = None
         if not dl:
-            sendMessage("This is not an active task!", context.bot, update.message)
+            sendMessage("This is not an active task!", context.bot, message)
             return
     elif len(context.args) == 0:
         msg = "Reply to an active /{cmd} which was used to start the download or add gid along with {cmd}\n\n" \
             "This command mainly for change category incase you decided to change category from already added donwload. " \
             "But you can always use /{mir} with to select category before download start."
-        sendMessage(msg.format_map({'cmd': BotCommands.CategorySelect,'mir': BotCommands.MirrorCommand[0]}), context.bot, update.message)
+        sendMessage(msg.format_map({'cmd': BotCommands.CategorySelect,'mir': BotCommands.MirrorCommand[0]}), context.bot, message)
         return
 
     if not CustomFilters.owner_query(user_id) and dl.message.from_user.id != user_id:
-        sendMessage("This task is not for you!", context.bot, update.message)
+        sendMessage("This task is not for you!", context.bot, message)
         return
-    if dl.status() not in [MirrorStatus.STATUS_DOWNLOADING, MirrorStatus.STATUS_PAUSED, MirrorStatus.STATUS_WAITING]:
-        sendMessage(f'Task should be on {MirrorStatus.STATUS_DOWNLOADING} or {MirrorStatus.STATUS_PAUSED} or {MirrorStatus.STATUS_WAITING}', context.bot, update.message)
+    if dl.status() not in [MirrorStatus.STATUS_DOWNLOADING, MirrorStatus.STATUS_PAUSED, MirrorStatus.STATUS_QUEUEDL]:
+        sendMessage(f'Task should be on {MirrorStatus.STATUS_DOWNLOADING} or {MirrorStatus.STATUS_PAUSED} or {MirrorStatus.STATUS_QUEUEDL}', context.bot, message)
         return
     listener = dl.listener() if dl and hasattr(dl, 'listener') else None
-    if listener and len(CATEGORY_NAMES) > 1 and not listener.isLeech:
-        msg_id = update.message.message_id
-        time_out = 30
-        btn_listener[msg_id] = [dl.gid(), time_out, time(), listener, listener.c_index]
-        text, btns = get_category_btns('change', time_out, msg_id, listener.c_index)
-        engine = sendMessage(text, context.bot, update.message, btns)
-        _auto_select(engine, msg_id, time_out)
+    if listener:
+        listener.selectCategory()
     else:
-        sendMessage("Can not change Category for this task!", context.bot, update.message)
-
-@new_thread
-def _auto_select(msg, msg_id, time_out):
-    sleep(time_out)
-    if msg_id in btn_listener:
-        info = btn_listener[msg_id]
-        del btn_listener[msg_id]
-        listener = info[3]
-        mode = f'Drive {CATEGORY_NAMES[listener.c_index]}'
-        if listener.isLeech:
-            mode = 'Leech'
-        if listener.isZip:
-            mode += ' as Zip'
-        elif listener.extract:
-            mode += ' as Unzip'
-        listener.mode = mode
-        editMessage(f"Timed out! Task has been set.\n\n<b>Upload</b>: {mode}", msg)
+        sendMessage("Can not change Category for this task!", context.bot, message)
 
 @new_thread
 def confirm_category(update, context):
@@ -87,7 +66,7 @@ def confirm_category(update, context):
         categoryInfo = btn_listener[msg_id]
     except KeyError:
         return editMessage('<b>Old Task</b>', message)
-    listener = categoryInfo[3]
+    listener = categoryInfo[2]
     if user_id != listener.message.from_user.id and not CustomFilters.owner_query(user_id):
         query.answer("This task is not for you!", show_alert=True)
     elif data[1] == 'scat':
@@ -98,10 +77,8 @@ def confirm_category(update, context):
         listener.c_index = c_index
     elif data[1] == 'cancel':
         query.answer()
-        listener.c_index = categoryInfo[4]
+        listener.c_index = categoryInfo[3]
         mode = f'Drive {CATEGORY_NAMES[listener.c_index]}'
-        if listener.isLeech:
-            mode = 'Telegram'
         if listener.isZip:
             mode += ' as Zip'
         elif listener.extract:
@@ -113,16 +90,15 @@ def confirm_category(update, context):
         query.answer()
         del btn_listener[msg_id]
         mode = f'Drive {CATEGORY_NAMES[listener.c_index]}'
-        if listener.isLeech:
-            mode = 'Telegram'
         if listener.isZip:
             mode += ' as Zip'
         elif listener.extract:
             mode += ' as Unzip'
         listener.mode = mode
-        return editMessage(f"Task updated.\n\n<b>Upload</b>: {mode}", message)
-    time_out = categoryInfo[1] - (time() - categoryInfo[2])
-    text, btns = get_category_btns('change', time_out, msg_id, c_index)
+        message.delete()
+        return
+    time_out = categoryInfo[0] - (time() - categoryInfo[1])
+    text, btns = get_category_btns(time_out, msg_id, listener.c_index)
     editMessage(text, message, btns)
 
 confirm_category_handler = CallbackQueryHandler(confirm_category, pattern="change")
