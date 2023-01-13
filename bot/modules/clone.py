@@ -138,13 +138,13 @@ def start_clone(listner):
     tag = listner[5]
     link = listner[6]
     raw_url = listner[7]
-    if config_dict['ENABLE_DM'] and message.chat.type == message.chat.SUPERGROUP:
-        dmMessage = sendDmMessage(bot, message)
-        if not dmMessage:
+    if (dmMode:=config_dict['DM_MODE']) and message.chat.type == message.chat.SUPERGROUP:
+        dmMessage = sendDmMessage(bot, message, dmMode)
+        if dmMessage == 'BotNotStarted':
             return
     else:
         dmMessage = None
-    logMessage = sendLogMessage(bot, message)
+    logMessage = sendLogMessage(bot, message, link, tag)
     gd = GoogleDriveHelper(user_id=message.from_user.id)
     res, size, name, files = gd.helper(link)
     if res != "":

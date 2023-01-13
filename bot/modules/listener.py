@@ -7,7 +7,7 @@ from time import sleep, time
 
 from requests import utils as rutils
 
-from bot import (CATEGORY_INDEXS, CATEGORY_NAMES, DATABASE_URL, DOWNLOAD_DIR,
+from bot import (CATEGORY_INDEXES, CATEGORY_NAMES, DATABASE_URL, DOWNLOAD_DIR,
                  LOGGER, MAX_SPLIT_SIZE, SHORTENERES, Interval, aria2,
                  btn_listener, config_dict, download_dict, download_dict_lock,
                  non_queued_dl, non_queued_up, queue_dict_lock, queued_dl,
@@ -95,6 +95,7 @@ class MirrorLeechListener:
             DbManger().add_download_url(self.raw_url, self.tag)
         if not self.isPrivate and config_dict['INCOMPLETE_TASK_NOTIFIER'] and DATABASE_URL:
             DbManger().add_incomplete_task(self.message.chat.id, self.message.link, self.tag)
+        self.selectCategory()
 
     def onDownloadComplete(self):
         with download_dict_lock:
@@ -131,7 +132,7 @@ class MirrorLeechListener:
                 path_ = f"{m_path}.zip"
             with download_dict_lock:
                 download_dict[self.uid] = ZipStatus(name, size, gid, self)
-            LEECH_SPLIT_SIZE = user_dict.get('split_size') or config_dict['LEECH_SPLIT_SIZE']
+            LEECH_SPLIT_SIZE = user_dict.get('split_size', False) or config_dict['LEECH_SPLIT_SIZE']
             if self.pswd:
                 if self.isLeech and int(size) > LEECH_SPLIT_SIZE:
                     LOGGER.info(f'Zip: orig_path: {m_path}, zip_path: {path_}.0*')
@@ -220,8 +221,8 @@ class MirrorLeechListener:
             o_files = []
             if not self.isZip:
                 checked = False
-                LEECH_SPLIT_SIZE = user_dict.get('split_size') or config_dict['LEECH_SPLIT_SIZE']
-                for dirpath, _, files in walk(up_dir, topdown=False):
+                LEECH_SPLIT_SIZE = user_dict.get('split_size', False) or config_dict['LEECH_SPLIT_SIZE']
+                for dirpath, subdir, files in walk(up_dir, topdown=False):
                     for file_ in files:
                         f_path = path.join(dirpath, file_)
                         f_size = path.getsize(f_path)
@@ -309,7 +310,9 @@ class MirrorLeechListener:
             msg += f"\n<b>Upload</b>: {self.mode}\n\n"
             if not files:
                 sendMessage(msg, self.bot, self.message)
-            elif self.dmMessage:
+                if self.logMessage:
+                    sendMessage(msg, self.bot, self.logMessage)
+            elif self.dmMessage and not config_dict['DUMP_CHAT']:
                 sendMessage(msg, self.bot, self.dmMessage)
                 msg += '<b>Files has been sent in your DM.</b>'
                 sendMessage(msg, self.bot, self.message)
@@ -360,7 +363,7 @@ class MirrorLeechListener:
                 link = short_url(link)
                 buttons.buildbutton("🔐 Drive Link", link)
             LOGGER.info(f'Done Uploading {name}')
-            if INDEX_URL:= CATEGORY_INDEXS[self.c_index]:
+            if INDEX_URL:= CATEGORY_INDEXES[self.c_index]:
                 url_path = rutils.quote(f'{name}')
                 if typ == "Folder":
                     share_url = short_url(f'{INDEX_URL}/{url_path}/')
@@ -419,6 +422,8 @@ class MirrorLeechListener:
         if msg:
             msg += f"\n<b>Upload</b>: {self.mode}"
             sendMessage(msg, self.bot, self.message, button)
+            if self.logMessage:
+                sendMessage(msg, self.bot, self.logMessage, button)
         if count == 0:
             self.clean()
         else:

@@ -165,15 +165,15 @@ def _mirror_leech(bot, message, isZip=False, extract=False, isQbit=False, isLeec
                     if isLeech and config_dict['DISABLE_LEECH']:
                         delete_links(bot, message)
                         return sendMessage('Locked!', bot, message)
-                if config_dict['ENABLE_DM'] and message.chat.type == message.chat.SUPERGROUP:
+                if (dmMode:=config_dict['DM_MODE']) and message.chat.type == message.chat.SUPERGROUP:
                     if isLeech and IS_USER_SESSION and not config_dict['DUMP_CHAT']:
-                        return sendMessage('ENABLE_DM and User Session need DUMP_CHAT', bot, message)
-                    dmMessage = sendDmMessage(bot, message)
-                    if not dmMessage:
+                        return sendMessage('DM_MODE and User Session need DUMP_CHAT', bot, message)
+                    dmMessage = sendDmMessage(bot, message, dmMode, isLeech)
+                    if dmMessage == 'BotNotStarted':
                         return
                 else:
                     dmMessage = None
-                logMessage = sendLogMessage(bot, message)
+                logMessage = sendLogMessage(bot, message, link, tag)
                 listener = MirrorLeechListener(bot, message, isZip, extract, isQbit, isLeech, pswd, tag, select, seed, sameDir, raw_url, c_index, dmMessage, logMessage)
                 listener.mode = 'Leech' if isLeech else f'Drive {CATEGORY_NAMES[c_index]}'
                 if isZip:
@@ -218,7 +218,7 @@ Number should be always before |newname or pswd:
 
 <b>NOTES:</b>
 1. When use cmd by reply don't add any option in link msg! always add them after cmd msg!
-2. You can't add this those options <b>|newname, pswd: and authorization</b> randomly. They should be arranged like exmaple above, rename then pswd. Those options should be after the link if link along with the cmd and after any other option
+2. You can't add this those options <b>|newname, pswd: and authorization</b> randomly. They should be arranged like example above, rename then pswd. Those options should be after the link if link along with the cmd and after any other option
 3. You can add this those options <b>d, s and multi</b> randomly. Ex: <code>/{cmd}</code> d:1:20 s 10 <b>or</b> <code>/{cmd}</code> s 10 d:0.5:100
 4. Commands that start with <b>qb</b> are ONLY for torrents.
 '''
@@ -249,15 +249,15 @@ Number should be always before |newname or pswd:
         if isLeech and config_dict['DISABLE_LEECH']:
             delete_links(bot, message)
             return sendMessage('Locked!', bot, message)
-    if config_dict['ENABLE_DM'] and message.chat.type == message.chat.SUPERGROUP:
+    if (dmMode:=config_dict['DM_MODE']) and message.chat.type == message.chat.SUPERGROUP:
         if isLeech and IS_USER_SESSION and not config_dict['DUMP_CHAT']:
-            return sendMessage('ENABLE_DM and User Session need DUMP_CHAT', bot, message)
-        dmMessage = sendDmMessage(bot, message)
-        if not dmMessage:
+            return sendMessage('DM_MODE and User Session need DUMP_CHAT', bot, message)
+        dmMessage = sendDmMessage(bot, message, dmMode, isLeech)
+        if dmMessage == 'BotNotStarted':
             return
     else:
         dmMessage = None
-    logMessage = sendLogMessage(bot, message)
+    logMessage = sendLogMessage(bot, message, link, tag)
     listener = MirrorLeechListener(bot, message,
                                 isZip, extract, isQbit, isLeech,
                                 pswd, tag, select, seed, sameDir,
@@ -314,7 +314,7 @@ Number should be always before |newname or pswd:
                     __run_multi()
                     return
         else:
-            msg = "qBittorrent for torrents only. if you are trying to dowload torrent then report."
+            msg = "qBittorrent for torrents only. if you are trying to download torrent then report."
             sendMessage(msg, bot, message)
             __run_multi()
             return

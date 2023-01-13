@@ -43,7 +43,7 @@ SHORTENERES = []
 SHORTENER_APIS = []
 BUTTON_NAMES = []
 BUTTON_URLS = []
-CATEGORY_INDEXS = []
+CATEGORY_INDEXES = []
 GLOBAL_EXTENSION_FILTER = ['.aria2']
 user_data = {}
 aria2_options = {}
@@ -76,7 +76,9 @@ rss_dict = {}
 # value: [listener, extras, isNeedEngine, time_out]
 btn_listener = {}
 
-for file_ in ['pyrogram.session', 'pyrogram.session-journal', 'rss_session.session', 'rss_session.session-journal']:
+for file_ in ['pyrogram.session', 'pyrogram.session-journal',
+            'rss_session.session', 'rss_session.session-journal',
+            'buttons.txt', 'shorteners.txt', 'categories.txt']:
     if path.exists(file_):
         remove(file_)
 
@@ -379,8 +381,8 @@ DISABLE_LEECH = DISABLE_LEECH.lower() == 'true'
 SET_COMMANDS = environ.get('SET_COMMANDS', '')
 SET_COMMANDS = SET_COMMANDS.lower() == 'true'
 
-ENABLE_DM = environ.get('ENABLE_DM', '')
-ENABLE_DM = ENABLE_DM.lower() == 'true'
+DM_MODE = environ.get('DM_MODE', '')
+DM_MODE = DM_MODE.lower() if DM_MODE.lower() in ['leech', 'mirror', 'all'] else ''
 
 DELETE_LINKS = environ.get('DELETE_LINKS', '')
 DELETE_LINKS = DELETE_LINKS.lower() == 'true'
@@ -456,13 +458,16 @@ config_dict = {'AS_DOCUMENT': AS_DOCUMENT,
                 'DISABLE_DRIVE_LINK': DISABLE_DRIVE_LINK,
                 'SET_COMMANDS': SET_COMMANDS,
                 'DISABLE_LEECH': DISABLE_LEECH,
-                'ENABLE_DM': ENABLE_DM,
+                'DM_MODE': DM_MODE,
                 'DELETE_LINKS': DELETE_LINKS}
 
 if GDRIVE_ID:
     DRIVES_NAMES.append("Main")
     DRIVES_IDS.append(GDRIVE_ID)
     INDEX_URLS.append(INDEX_URL)
+    CATEGORY_NAMES.append("Root")
+    CATEGORY_IDS.append(GDRIVE_ID)
+    CATEGORY_INDEXES.append(INDEX_URL)
 
 if path.exists('list_drives.txt'):
     with open('list_drives.txt', 'r+') as f:
@@ -496,10 +501,6 @@ if path.exists('shorteners.txt'):
                 SHORTENERES.append(temp[0])
                 SHORTENER_APIS.append(temp[1])
 
-if GDRIVE_ID:
-    CATEGORY_NAMES.append("Root")
-    CATEGORY_IDS.append(GDRIVE_ID)
-    CATEGORY_INDEXS.append(INDEX_URL)
 
 if path.exists('categories.txt'):
     with open('categories.txt', 'r+') as f:
@@ -509,9 +510,9 @@ if path.exists('categories.txt'):
             CATEGORY_IDS.append(temp[1])
             CATEGORY_NAMES.append(temp[0].replace("_", " "))
             if len(temp) > 2:
-                CATEGORY_INDEXS.append(temp[2])
+                CATEGORY_INDEXES.append(temp[2])
             else:
-                CATEGORY_INDEXS.append('')
+                CATEGORY_INDEXES.append('')
 
 if BASE_URL:
     Popen(f"gunicorn web.wserver:app --bind 0.0.0.0:{SERVER_PORT}", shell=True)
