@@ -10,12 +10,10 @@ from PIL import Image
 from pyrogram.errors import FloodWait, RPCError
 from pyrogram.types import (InlineKeyboardButton, InlineKeyboardMarkup,
                             InputMediaDocument, InputMediaVideo)
-from telegram import InputMediaDocument as ptbInputMediaDocument
-from telegram import InputMediaVideo as ptbInputMediaVideo
 from tenacity import (RetryError, retry, retry_if_exception_type,
                       stop_after_attempt, wait_exponential)
 
-from bot import GLOBAL_EXTENSION_FILTER, app, config_dict, user_data
+from bot import GLOBAL_EXTENSION_FILTER, app, config_dict, user_data, IS_USER_SESSION
 from bot.helper.ext_utils.bot_utils import get_readable_file_size
 from bot.helper.ext_utils.fs_utils import (clean_unwanted, get_media_info,
                                            get_media_streams, take_ss)
@@ -81,7 +79,7 @@ class TgUploader:
                     if self.__is_cancelled:
                         return
                     if not self.__listener.seed or self.__listener.newDir or dirpath.endswith("splited_files_mltb"):
-                            remove(up_path)
+                        remove(up_path)
                     if not self.__is_corrupted and (not self.__listener.isPrivate or config_dict['DUMP_CHAT']):
                         self.__msgs_dict[self.__sent_msg.link] = file_
                     sleep(1)
@@ -105,6 +103,10 @@ class TgUploader:
         if self.__total_files <= self.__corrupted:
             self.__listener.onUploadError('Files Corrupted or unable to upload. Check logs!')
             return
+        if config_dict['DUMP_CHAT']:
+            msg = self.__listener.message.text if self.__listener.isPrivate else f'<b><a href="{self.__listener.message.link}">Source</a></b>'
+            msg = f'{msg}\n\n<b>#LeechCompleted</b>: {self.__listener.tag} #id{self.__listener.message.from_user.id}'
+            self.__sent_msg.reply_text(text=msg, quote=True)
         LOGGER.info(f"Leech Completed: {self.name}")
         size = get_readable_file_size(self.__size)
         self.__listener.onUploadComplete(None, size, self.__msgs_dict, self.__total_files, self.__corrupted, self.name)
@@ -211,7 +213,7 @@ class TgUploader:
                     else:
                         self.__last_msg_in_group = True
 
-            if not self.__last_msg_in_group and self.__sent_DMmsg:
+            if self.__sent_DMmsg:
                 sleep(1)
                 __ptb = self.__sent_DMmsg.reply_copy(
                 from_chat_id=self.__sent_msg.chat.id,
@@ -252,18 +254,20 @@ class TgUploader:
 
     def __msg_to_reply(self):
         if DUMP_CHAT:= config_dict['DUMP_CHAT']:
-            msg = self.__listener.message.text if self.__listener.isPrivate else f'<b><a href="{self.__listener.message.link}">Source</a></b>'
-            msg = f'{msg}\n\n<b>#cc</b>: {self.__listener.tag} (<code>{self.__listener.message.from_user.id}</code>)'
-            self.__sent_msg = app.send_message(DUMP_CHAT, msg, disable_web_page_preview=True)
+            if self.__listener.logMessage:
+                self.__sent_msg = app.copy_message(DUMP_CHAT, self.__listener.logMessage.chat.id, self.__listener.logMessage.message_id)
+            else:
+                msg = self.__listener.message.text if self.__listener.isPrivate else f'<b><a href="{self.__listener.message.link}">Source</a></b>'
+                msg = f'{msg}\n\n<b>#cc</b>: {self.__listener.tag} (<code>{self.__listener.message.from_user.id}</code>)'
+                self.__sent_msg = app.send_message(DUMP_CHAT, msg, disable_web_page_preview=True)
             if self.__listener.dmMessage:
                 self.__sent_DMmsg = copy(self.__listener.dmMessage)
         elif self.__listener.dmMessage:
             self.__sent_msg = app.get_messages(self.__listener.message.from_user.id, self.__listener.dmMessage.message_id)
         else:
             self.__sent_msg = app.get_messages(self.__listener.message.chat.id, self.__listener.uid)
-        if (self.__listener.message.chat.type != 'private' and config_dict['DUMP_CHAT']) or not self.__listener.dmMessage:
+        if (not IS_USER_SESSION and self.__listener.message.chat.type != 'private' and config_dict['DUMP_CHAT']) or not self.__listener.dmMessage:
             self.__button = InlineKeyboardMarkup([[InlineKeyboardButton(text='Save Message', callback_data="save")]])
-
 
     def __get_input_media(self, subkey, key):
         rlist = []
@@ -272,16 +276,6 @@ class TgUploader:
                 input_media = InputMediaVideo(media=msg.video.file_id, caption=msg.caption)
             else:
                 input_media = InputMediaDocument(media=msg.document.file_id, caption=msg.caption)
-            rlist.append(input_media)
-        return rlist
-
-    def __get_ptb_input_media(self, subkey, key):
-        rlist = []
-        for msg in self.__media_dict[key][subkey]:
-            if key == 'videos':
-                input_media = ptbInputMediaVideo(media=msg.video.file_id, caption=msg.caption)
-            else:
-                input_media = ptbInputMediaDocument(media=msg.document.file_id, caption=msg.caption)
             rlist.append(input_media)
         return rlist
 
@@ -294,18 +288,11 @@ class TgUploader:
             if msg.link in self.__msgs_dict:
                 del self.__msgs_dict[msg.link]
             msg.delete()
+        del self.__media_dict[key][subkey]
         if not self.__listener.isPrivate or config_dict['DUMP_CHAT']:
             for m in msgs_list:
                 self.__msgs_dict[m.link] = m.caption
         self.__sent_msg = msgs_list[-1]
-        if self.__sent_DMmsg:
-            msgs_list = self.__sent_DMmsg.reply_media_group(
-                self.__get_ptb_input_media(subkey, key),
-                quote=True,
-                disable_notification=True
-            )
-            self.__sent_DMmsg = msgs_list[-1]
-        del self.__media_dict[key][subkey]
 
     @property
     def speed(self):
