@@ -3,13 +3,13 @@ from pyrogram.filters import command
 from pyrogram.handlers import MessageHandler
 
 from bot import DATABASE_URL, bot, user_data
-from bot.helper.ext_utils.bot_utils import update_user_ldata, new_thread
+from bot.helper.ext_utils.bot_utils import update_user_ldata
 from bot.helper.ext_utils.db_handler import DbManger
 from bot.helper.telegram_helper.bot_commands import BotCommands
 from bot.helper.telegram_helper.filters import CustomFilters
 from bot.helper.telegram_helper.message_utils import sendMessage
 
-@new_thread
+
 async def authorize(client, message):
     msg = message.text.split()
     if len(msg) > 1:
@@ -27,7 +27,7 @@ async def authorize(client, message):
         msg = 'Authorized'
     await sendMessage(message, msg)
 
-@new_thread
+
 async def unauthorize(client, message):
     msg = message.text.split()
     if len(msg) > 1:
@@ -45,7 +45,7 @@ async def unauthorize(client, message):
         msg = 'Already Unauthorized!'
     await sendMessage(message, msg)
 
-@new_thread
+
 async def addSudo(client, message):
     id_ = ""
     msg = message.text.split()
@@ -65,7 +65,7 @@ async def addSudo(client, message):
         msg = "Give ID or Reply To message of whom you want to Promote."
     await sendMessage(message, msg)
 
-@new_thread
+
 async def removeSudo(client, message):
     id_ = ""
     msg = message.text.split()
@@ -82,7 +82,11 @@ async def removeSudo(client, message):
         msg = "Give ID or Reply To message of whom you want to remove from Sudo"
     await sendMessage(message, msg)
 
-bot.add_handler(MessageHandler(authorize, filters=command(BotCommands.AuthorizeCommand) & CustomFilters.sudo))
-bot.add_handler(MessageHandler(unauthorize, filters=command(BotCommands.UnAuthorizeCommand) & CustomFilters.sudo))
-bot.add_handler(MessageHandler(addSudo, filters=command(BotCommands.AddSudoCommand) & CustomFilters.sudo))
-bot.add_handler(MessageHandler(removeSudo, filters=command(BotCommands.RmSudoCommand) & CustomFilters.sudo))
+bot.add_handler(MessageHandler(authorize, filters=command(
+    BotCommands.AuthorizeCommand) & CustomFilters.sudo))
+bot.add_handler(MessageHandler(unauthorize, filters=command(
+    BotCommands.UnAuthorizeCommand) & CustomFilters.sudo))
+bot.add_handler(MessageHandler(addSudo, filters=command(
+    BotCommands.AddSudoCommand) & CustomFilters.sudo))
+bot.add_handler(MessageHandler(removeSudo, filters=command(
+    BotCommands.RmSudoCommand) & CustomFilters.sudo))

@@ -7,13 +7,15 @@ from pyrogram.filters import command, regex
 from pyrogram.handlers import CallbackQueryHandler, MessageHandler
 
 from bot import LOGGER, bot, config_dict, get_client
-from bot.helper.ext_utils.bot_utils import (get_readable_file_size, new_thread,
+from bot.helper.ext_utils.bot_utils import (get_readable_file_size, new_task,
                                             sync_to_async)
 from bot.helper.ext_utils.telegraph_helper import telegraph
 from bot.helper.telegram_helper.bot_commands import BotCommands
 from bot.helper.telegram_helper.button_build import ButtonMaker
 from bot.helper.telegram_helper.filters import CustomFilters
-from bot.helper.telegram_helper.message_utils import editMessage, sendMessage
+from bot.helper.telegram_helper.message_utils import (anno_checker,
+                                                      editMessage, isAdmin,
+                                                      request_limiter, sendMessage)
 
 PLUGINS = []
 SITES = None
@@ -21,16 +23,15 @@ TELEGRAPH_LIMIT = 300
 
 
 async def initiate_search_tools():
-    qbclient = get_client()
+    qbclient = await sync_to_async(get_client)
     qb_plugins = await sync_to_async(qbclient.search_plugins)
     if SEARCH_PLUGINS := config_dict['SEARCH_PLUGINS']:
         globals()['PLUGINS'] = []
         src_plugins = eval(SEARCH_PLUGINS)
         if qb_plugins:
-            for plugin in qb_plugins:
-                await sync_to_async(qbclient.search_uninstall_plugin, names=plugin['name'])
+            names = [plugin['name'] for plugin in qb_plugins]
+            await sync_to_async(qbclient.search_uninstall_plugin, names=names)
         await sync_to_async(qbclient.search_install_plugin, src_plugins)
-        await sync_to_async(qbclient.auth_log_out)
     elif qb_plugins:
         for plugin in qb_plugins:
             await sync_to_async(qbclient.search_uninstall_plugin, names=plugin['name'])
@@ -43,11 +44,14 @@ async def initiate_search_tools():
             async with ClientSession(trust_env=True) as c:
                 async with c.get(f'{SEARCH_API_LINK}/api/v1/sites') as res:
                     data = await res.json()
-            SITES = {str(site): str(site).capitalize() for site in data['supported_sites']}
+            SITES = {str(site): str(site).capitalize()
+                     for site in data['supported_sites']}
             SITES['all'] = 'All'
         except Exception as e:
-            LOGGER.error(f"{e} Can't fetching sites from SEARCH_API_LINK make sure use latest version of API")
+            LOGGER.error(
+                f"{e} Can't fetching sites from SEARCH_API_LINK make sure use latest version of API")
             SITES = None
+
 
 async def __search(key, site, message, method):
     if method.startswith('api'):
@@ -91,7 +95,7 @@ async def __search(key, site, message, method):
             return
     else:
         LOGGER.info(f"PLUGINS Searching: {key} from {site}")
-        client = get_client()
+        client = await sync_to_async(get_client)
         search = await sync_to_async(client.search_start, pattern=key, plugins=site, category='all')
         search_id = search.id
         while True:
@@ -99,7 +103,7 @@ async def __search(key, site, message, method):
             status = result_status[0].status
             if status != 'Running':
                 break
-        dict_search_results = await sync_to_async(client.search_results, search_id=search_id)
+        dict_search_results = await sync_to_async(client.search_results, search_id=search_id, limit=TELEGRAPH_LIMIT)
         search_results = dict_search_results.results
         total_results = dict_search_results.total
         if total_results == 0:
@@ -107,13 +111,14 @@ async def __search(key, site, message, method):
             return
         msg = f"<b>Found {min(total_results, TELEGRAPH_LIMIT)}</b>"
         msg += f" <b>result(s) for <i>{key}</i>\nTorrent Site:- <i>{site.capitalize()}</i></b>"
+        await sync_to_async(client.search_delete, search_id=search_id)
+        await sync_to_async(client.auth_log_out)
     link = await __getResult(search_results, key, message, method)
     buttons = ButtonMaker()
     buttons.ubutton("🔎 VIEW", link)
     button = buttons.build_menu(1)
     await editMessage(message, msg, button)
-    if not method.startswith('api'):
-        await sync_to_async(client.search_delete, search_id=search_id)
+
 
 async def __getResult(search_results, key, message, method):
     telegraph_content = []
@@ -129,7 +134,7 @@ async def __getResult(search_results, key, message, method):
         if method.startswith('api'):
             try:
                 if 'name' in result.keys():
-                     msg += f"<code><a href='{result['url']}'>{escape(result['name'])}</a></code><br>"
+                    msg += f"<code><a href='{result['url']}'>{escape(result['name'])}</a></code><br>"
                 if 'torrents' in result.keys():
                     for subres in result['torrents']:
                         msg += f"<b>Quality: </b>{subres['quality']} | <b>Type: </b>{subres['type']} | "
@@ -166,8 +171,8 @@ async def __getResult(search_results, key, message, method):
                 msg += f"<a href='{link}'>Direct Link</a><br><br>"
 
         if len(msg.encode('utf-8')) > 39000:
-           telegraph_content.append(msg)
-           msg = ""
+            telegraph_content.append(msg)
+            msg = ""
 
         if index == TELEGRAPH_LIMIT:
             break
@@ -177,11 +182,12 @@ async def __getResult(search_results, key, message, method):
 
     await editMessage(message, f"<b>Creating</b> {len(telegraph_content)} <b>Telegraph pages.</b>")
     path = [(await telegraph.create_page(title='Jmdkh-mltb Torrent Search',
-                                  content=content))["path"] for content in telegraph_content]
+                                         content=content))["path"] for content in telegraph_content]
     if len(path) > 1:
         await editMessage(message, f"<b>Editing</b> {len(telegraph_content)} <b>Telegraph pages.</b>")
         await telegraph.edit_telegraph(path, telegraph_content)
     return f"https://telegra.ph/{path[0]}"
+
 
 def __api_buttons(user_id, method):
     buttons = ButtonMaker()
@@ -190,23 +196,31 @@ def __api_buttons(user_id, method):
     buttons.ibutton("Cancel", f"torser {user_id} cancel")
     return buttons.build_menu(2)
 
+
 async def __plugin_buttons(user_id):
     buttons = ButtonMaker()
     if not PLUGINS:
-        qbclient = get_client()
+        qbclient = await sync_to_async(get_client)
         pl = await sync_to_async(qbclient.search_plugins)
         for name in pl:
             PLUGINS.append(name['name'])
         await sync_to_async(qbclient.auth_log_out)
     for siteName in PLUGINS:
-        buttons.ibutton(siteName.capitalize(), f"torser {user_id} {siteName} plugin")
+        buttons.ibutton(siteName.capitalize(),
+                        f"torser {user_id} {siteName} plugin")
     buttons.ibutton('All', f"torser {user_id} all plugin")
     buttons.ibutton("Cancel", f"torser {user_id} cancel")
     return buttons.build_menu(2)
 
-@new_thread
+
 async def torrentSearch(client, message):
+    if not message.from_user:
+        message.from_user = await anno_checker(message)
+    if not message.from_user:
+        return
     user_id = message.from_user.id
+    if not await isAdmin(message, user_id) and await request_limiter(message):
+        return
     buttons = ButtonMaker()
     key = message.text.split()
     SEARCH_PLUGINS = config_dict['SEARCH_PLUGINS']
@@ -233,7 +247,8 @@ async def torrentSearch(client, message):
         button = await __plugin_buttons(user_id)
         await sendMessage(message, 'Choose site to search | Plugins:', button)
 
-@new_thread
+
+@new_task
 async def torrentSearchUpdate(client, query):
     user_id = query.from_user.id
     message = query.message
@@ -241,7 +256,7 @@ async def torrentSearchUpdate(client, query):
     key = key[1].strip() if len(key) > 1 else None
     data = query.data.split()
     if user_id != int(data[1]):
-        await query.answer("Not Yours!", alert=True)
+        await query.answer("Not Yours!", show_alert=True)
     elif data[2].startswith('api'):
         await query.answer()
         button = __api_buttons(user_id, data[2])
@@ -271,5 +286,7 @@ async def torrentSearchUpdate(client, query):
         await editMessage(message, "Search has been canceled!")
 
 
-bot.add_handler(MessageHandler(torrentSearch, filters=command(BotCommands.SearchCommand) & CustomFilters.authorized))
-bot.add_handler(CallbackQueryHandler(torrentSearchUpdate, filters=regex("^torser")))
+bot.add_handler(MessageHandler(torrentSearch, filters=command(
+    BotCommands.SearchCommand) & CustomFilters.authorized))
+bot.add_handler(CallbackQueryHandler(
+    torrentSearchUpdate, filters=regex("^torser")))

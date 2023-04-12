@@ -1,5 +1,4 @@
 config.env
-*auth_token.txt
 *.pyc
 data*
 .vscode
@@ -10,6 +9,7 @@ data*
 log.txt
 accounts/*
 Thumbnails/*
+rclone/*
 list_drives.txt
 cookies.txt
 downloads
@@ -17,3 +17,4 @@ categories.txt
 shorteners.txt
 buttons.txt
 terabox.txt
+rclone.conf

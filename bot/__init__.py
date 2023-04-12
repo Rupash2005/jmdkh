@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
-from uvloop import install
-
-install()
 from asyncio import Lock
+from collections import OrderedDict
 from faulthandler import enable as faulthandler_enable
 from logging import INFO, FileHandler, StreamHandler, basicConfig
 from logging import error as log_error
 from logging import getLogger
 from logging import info as log_info
 from logging import warning as log_warning
-from os import environ
+from os import environ, getcwd
 from os import path as ospath
 from os import remove as osremove
 from socket import setdefaulttimeout
@@ -27,16 +25,17 @@ from pyrogram import Client as tgClient
 from pyrogram import enums
 from qbittorrentapi import Client as qbClient
 from tzlocal import get_localzone
+from uvloop import install
 
 faulthandler_enable()
-
+install()
 setdefaulttimeout(600)
 
 botStartTime = time()
 
-basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                    handlers=[FileHandler('log.txt'), StreamHandler()],
-                    level=INFO)
+basicConfig(format='%(asctime)s - %(name)s %(levelname)s : %(message)s [%(module)s:%(lineno)d]',
+            handlers=[FileHandler('log.txt'), StreamHandler()],
+            level=INFO)
 
 LOGGER = getLogger(__name__)
 
@@ -44,6 +43,7 @@ load_dotenv('config.env', override=True)
 
 Interval = []
 QbInterval = []
+QbTorrents = {}
 list_drives = {}
 SHORTENERES = []
 SHORTENER_APIS = []
@@ -68,10 +68,9 @@ except:
 download_dict_lock = Lock()
 status_reply_dict_lock = Lock()
 queue_dict_lock = Lock()
+qb_listener_lock = Lock()
 status_reply_dict = {}
 download_dict = {}
-# key: rss_title
-# value: {link, last_feed, last_title, filter}
 rss_dict = {}
 btn_listener = {}
 
@@ -89,7 +88,8 @@ if len(DATABASE_URL) == 0:
 if DATABASE_URL:
     conn = MongoClient(DATABASE_URL)
     db = conn.mltb
-    if config_dict := db.settings.config.find_one({'_id': bot_id}):  #return config dict (all env vars)
+    # return config dict (all env vars)
+    if config_dict := db.settings.config.find_one({'_id': bot_id}):
         del config_dict['_id']
         for key, value in config_dict.items():
             environ[key] = str(value)
@@ -136,6 +136,18 @@ GDRIVE_ID = environ.get('GDRIVE_ID', '')
 if len(GDRIVE_ID) == 0:
     GDRIVE_ID = ''
 
+RCLONE_PATH = environ.get('RCLONE_PATH', '')
+if len(RCLONE_PATH) == 0:
+    RCLONE_PATH = ''
+
+RCLONE_FLAGS = environ.get('RCLONE_FLAGS', '')
+if len(RCLONE_FLAGS) == 0:
+    RCLONE_FLAGS = ''
+
+DEFAULT_UPLOAD = environ.get('DEFAULT_UPLOAD', '')
+if DEFAULT_UPLOAD != 'rc':
+    DEFAULT_UPLOAD = 'gd'
+
 DOWNLOAD_DIR = environ.get('DOWNLOAD_DIR', '')
 if len(DOWNLOAD_DIR) == 0:
     DOWNLOAD_DIR = '/usr/src/app/downloads/'
@@ -158,6 +170,8 @@ EXTENSION_FILTER = environ.get('EXTENSION_FILTER', '')
 if len(EXTENSION_FILTER) > 0:
     fx = EXTENSION_FILTER.split()
     for x in fx:
+        if x.strip().startswith('.'):
+            x = x.lstrip('.')
         GLOBAL_EXTENSION_FILTER.append(x.strip().lower())
 
 IS_PREMIUM_USER = False
@@ -166,9 +180,14 @@ USER_SESSION_STRING = environ.get('USER_SESSION_STRING', '')
 if len(USER_SESSION_STRING) != 0:
     log_info("Creating client from USER_SESSION_STRING")
     user = tgClient('user', TELEGRAM_API, TELEGRAM_HASH, session_string=USER_SESSION_STRING,
-                    parse_mode=enums.ParseMode.HTML, no_updates=True)
-    user.start()
-    IS_PREMIUM_USER = user.me.is_premium
+                    parse_mode=enums.ParseMode.HTML, no_updates=True, max_concurrent_transmissions=1000).start()
+    if user.me.is_bot:
+        log_warning(
+            "You added bot string for USER_SESSION_STRING this is not allowed! Exiting now")
+        user.stop()
+        exit(1)
+    else:
+        IS_PREMIUM_USER = user.me.is_premium
 
 MEGA_API_KEY = environ.get('MEGA_API_KEY', '')
 if len(MEGA_API_KEY) == 0:
@@ -232,14 +251,8 @@ SEARCH_LIMIT = 0 if len(SEARCH_LIMIT) == 0 else int(SEARCH_LIMIT)
 DUMP_CHAT = environ.get('DUMP_CHAT', '')
 DUMP_CHAT = '' if len(DUMP_CHAT) == 0 else int(DUMP_CHAT)
 
-LOG_CHAT = environ.get('LOG_CHAT', '')
-LOG_CHAT = '' if len(LOG_CHAT) == 0 else int(LOG_CHAT)
-
 STATUS_LIMIT = environ.get('STATUS_LIMIT', '')
-STATUS_LIMIT = '' if len(STATUS_LIMIT) == 0 else int(STATUS_LIMIT)
-
-USER_MAX_TASKS = environ.get('USER_MAX_TASKS', '')
-USER_MAX_TASKS = '' if len(USER_MAX_TASKS) == 0 else int(USER_MAX_TASKS)
+STATUS_LIMIT = 8 if len(STATUS_LIMIT) == 0 else int(STATUS_LIMIT)
 
 CMD_SUFFIX = environ.get('CMD_SUFFIX', '')
 
@@ -288,11 +301,8 @@ EQUAL_SPLITS = EQUAL_SPLITS.lower() == 'true'
 MEDIA_GROUP = environ.get('MEDIA_GROUP', '')
 MEDIA_GROUP = MEDIA_GROUP.lower() == 'true'
 
-SERVER_PORT = environ.get('SERVER_PORT', '')
-if len(SERVER_PORT) == 0:
-    SERVER_PORT = 80
-else:
-    SERVER_PORT = int(SERVER_PORT)
+BASE_URL_PORT = environ.get('BASE_URL_PORT', '')
+BASE_URL_PORT = 80 if len(BASE_URL_PORT) == 0 else int(BASE_URL_PORT)
 
 BASE_URL = environ.get('BASE_URL', '').rstrip("/")
 if len(BASE_URL) == 0:
@@ -307,8 +317,31 @@ UPSTREAM_BRANCH = environ.get('UPSTREAM_BRANCH', '')
 if len(UPSTREAM_BRANCH) == 0:
     UPSTREAM_BRANCH = 'master'
 
+RCLONE_SERVE_URL = environ.get('RCLONE_SERVE_URL', '')
+if len(RCLONE_SERVE_URL) == 0:
+    RCLONE_SERVE_URL = ''
+
+RCLONE_SERVE_PORT = environ.get('RCLONE_SERVE_PORT', '')
+RCLONE_SERVE_PORT = 8080 if len(
+    RCLONE_SERVE_PORT) == 0 else int(RCLONE_SERVE_PORT)
+
+RCLONE_SERVE_USER = environ.get('RCLONE_SERVE_USER', '')
+if len(RCLONE_SERVE_USER) == 0:
+    RCLONE_SERVE_USER = ''
+
+RCLONE_SERVE_PASS = environ.get('RCLONE_SERVE_PASS', '')
+if len(RCLONE_SERVE_PASS) == 0:
+    RCLONE_SERVE_PASS = ''
+
+LOG_CHAT = environ.get('LOG_CHAT', '')
+LOG_CHAT = '' if len(LOG_CHAT) == 0 else int(LOG_CHAT)
+
+USER_MAX_TASKS = environ.get('USER_MAX_TASKS', '')
+USER_MAX_TASKS = '' if len(USER_MAX_TASKS) == 0 else int(USER_MAX_TASKS)
+
 STORAGE_THRESHOLD = environ.get('STORAGE_THRESHOLD', '')
-STORAGE_THRESHOLD = '' if len(STORAGE_THRESHOLD) == 0 else float(STORAGE_THRESHOLD)
+STORAGE_THRESHOLD = '' if len(
+    STORAGE_THRESHOLD) == 0 else float(STORAGE_THRESHOLD)
 
 TORRENT_LIMIT = environ.get('TORRENT_LIMIT', '')
 TORRENT_LIMIT = '' if len(TORRENT_LIMIT) == 0 else float(TORRENT_LIMIT)
@@ -346,8 +379,13 @@ DISABLE_LEECH = DISABLE_LEECH.lower() == 'true'
 SET_COMMANDS = environ.get('SET_COMMANDS', '')
 SET_COMMANDS = SET_COMMANDS.lower() == 'true'
 
+REQUEST_LIMITS = environ.get('REQUEST_LIMITS', '')
+REQUEST_LIMITS = '' if len(
+    REQUEST_LIMITS) == 0 else max(int(REQUEST_LIMITS), 5)
+
 DM_MODE = environ.get('DM_MODE', '')
-DM_MODE = DM_MODE.lower() if DM_MODE.lower() in ['leech', 'mirror', 'all'] else ''
+DM_MODE = DM_MODE.lower() if DM_MODE.lower() in [
+    'leech', 'mirror', 'all'] else ''
 
 DELETE_LINKS = environ.get('DELETE_LINKS', '')
 DELETE_LINKS = DELETE_LINKS.lower() == 'true'
@@ -356,70 +394,82 @@ FSUB_IDS = environ.get('FSUB_IDS', '')
 if len(FSUB_IDS) == 0:
     FSUB_IDS = ''
 
-config_dict = {'AS_DOCUMENT': AS_DOCUMENT,
-                'AUTHORIZED_CHATS': AUTHORIZED_CHATS,
-                'FSUB_IDS': FSUB_IDS,
-                'AUTO_DELETE_MESSAGE_DURATION': AUTO_DELETE_MESSAGE_DURATION,
-                'BASE_URL': BASE_URL,
-                'BOT_TOKEN': BOT_TOKEN,
-                'CMD_SUFFIX': CMD_SUFFIX,
-                'DATABASE_URL': DATABASE_URL,
-                'DOWNLOAD_DIR': DOWNLOAD_DIR,
-                'DUMP_CHAT': DUMP_CHAT,
-                'LOG_CHAT': LOG_CHAT,
-                'EQUAL_SPLITS': EQUAL_SPLITS,
-                'EXTENSION_FILTER': EXTENSION_FILTER,
-                'GDRIVE_ID': GDRIVE_ID,
-                'INCOMPLETE_TASK_NOTIFIER': INCOMPLETE_TASK_NOTIFIER,
-                'INDEX_URL': INDEX_URL,
-                'IS_TEAM_DRIVE': IS_TEAM_DRIVE,
-                'LEECH_FILENAME_PREFIX': LEECH_FILENAME_PREFIX,
-                'LEECH_SPLIT_SIZE': LEECH_SPLIT_SIZE,
-                'MEDIA_GROUP': MEDIA_GROUP,
-                'MEGA_API_KEY': MEGA_API_KEY,
-                'MEGA_EMAIL_ID': MEGA_EMAIL_ID,
-                'MEGA_PASSWORD': MEGA_PASSWORD,
-                'OWNER_ID': OWNER_ID,
-                'QUEUE_ALL': QUEUE_ALL,
-                'QUEUE_DOWNLOAD': QUEUE_DOWNLOAD,
-                'QUEUE_UPLOAD': QUEUE_UPLOAD,
-                'RSS_CHAT_ID': RSS_CHAT_ID,
-                'RSS_DELAY': RSS_DELAY,
-                'SEARCH_API_LINK': SEARCH_API_LINK,
-                'SEARCH_LIMIT': SEARCH_LIMIT,
-                'SEARCH_PLUGINS': SEARCH_PLUGINS,
-                'SERVER_PORT': SERVER_PORT,
-                'STATUS_LIMIT': STATUS_LIMIT,
-                'USER_MAX_TASKS': USER_MAX_TASKS,
-                'STATUS_UPDATE_INTERVAL': STATUS_UPDATE_INTERVAL,
-                'STOP_DUPLICATE': STOP_DUPLICATE,
-                'SUDO_USERS': SUDO_USERS,
-                'TELEGRAM_API': TELEGRAM_API,
-                'TELEGRAM_HASH': TELEGRAM_HASH,
-                'TORRENT_TIMEOUT': TORRENT_TIMEOUT,
-                'UPSTREAM_REPO': UPSTREAM_REPO,
-                'UPSTREAM_BRANCH': UPSTREAM_BRANCH,
-                'UPTOBOX_TOKEN': UPTOBOX_TOKEN,
-                'USER_SESSION_STRING': USER_SESSION_STRING,
-                'USE_SERVICE_ACCOUNTS': USE_SERVICE_ACCOUNTS,
-                'VIEW_LINK': VIEW_LINK,
-                'WEB_PINCODE': WEB_PINCODE,
-                'YT_DLP_QUALITY': YT_DLP_QUALITY,
-                'STORAGE_THRESHOLD': STORAGE_THRESHOLD,
-                'TORRENT_LIMIT': TORRENT_LIMIT,
-                'DIRECT_LIMIT': DIRECT_LIMIT,
-                'YTDLP_LIMIT': YTDLP_LIMIT,
-                'GDRIVE_LIMIT': GDRIVE_LIMIT,
-                'CLONE_LIMIT': CLONE_LIMIT,
-                'MEGA_LIMIT': MEGA_LIMIT,
-                'LEECH_LIMIT': LEECH_LIMIT,
-                'ENABLE_MESSAGE_FILTER': ENABLE_MESSAGE_FILTER,
-                'STOP_DUPLICATE_TASKS': STOP_DUPLICATE_TASKS,
-                'DISABLE_DRIVE_LINK': DISABLE_DRIVE_LINK,
-                'SET_COMMANDS': SET_COMMANDS,
-                'DISABLE_LEECH': DISABLE_LEECH,
-                'DM_MODE': DM_MODE,
-                'DELETE_LINKS': DELETE_LINKS}
+config_dict = {
+    "AS_DOCUMENT": AS_DOCUMENT,
+    "AUTHORIZED_CHATS": AUTHORIZED_CHATS,
+    "AUTO_DELETE_MESSAGE_DURATION": AUTO_DELETE_MESSAGE_DURATION,
+    "BASE_URL": BASE_URL,
+    "BASE_URL_PORT": BASE_URL_PORT,
+    "BOT_TOKEN": BOT_TOKEN,
+    "CMD_SUFFIX": CMD_SUFFIX,
+    "DATABASE_URL": DATABASE_URL,
+    "DEFAULT_UPLOAD": DEFAULT_UPLOAD,
+    "DOWNLOAD_DIR": DOWNLOAD_DIR,
+    "DUMP_CHAT": DUMP_CHAT,
+    "EQUAL_SPLITS": EQUAL_SPLITS,
+    "EXTENSION_FILTER": EXTENSION_FILTER,
+    "GDRIVE_ID": GDRIVE_ID,
+    "INCOMPLETE_TASK_NOTIFIER": INCOMPLETE_TASK_NOTIFIER,
+    "INDEX_URL": INDEX_URL,
+    "IS_TEAM_DRIVE": IS_TEAM_DRIVE,
+    "LEECH_FILENAME_PREFIX": LEECH_FILENAME_PREFIX,
+    "LEECH_SPLIT_SIZE": LEECH_SPLIT_SIZE,
+    "MEDIA_GROUP": MEDIA_GROUP,
+    "MEGA_API_KEY": MEGA_API_KEY,
+    "MEGA_EMAIL_ID": MEGA_EMAIL_ID,
+    "MEGA_PASSWORD": MEGA_PASSWORD,
+    "OWNER_ID": OWNER_ID,
+    "QUEUE_ALL": QUEUE_ALL,
+    "QUEUE_DOWNLOAD": QUEUE_DOWNLOAD,
+    "QUEUE_UPLOAD": QUEUE_UPLOAD,
+    "RCLONE_FLAGS": RCLONE_FLAGS,
+    "RCLONE_PATH": RCLONE_PATH,
+    "RCLONE_SERVE_URL": RCLONE_SERVE_URL,
+    "RCLONE_SERVE_PORT": RCLONE_SERVE_PORT,
+    "RCLONE_SERVE_USER": RCLONE_SERVE_USER,
+    "RCLONE_SERVE_PASS": RCLONE_SERVE_PASS,
+    "RSS_CHAT_ID": RSS_CHAT_ID,
+    "RSS_DELAY": RSS_DELAY,
+    "SEARCH_API_LINK": SEARCH_API_LINK,
+    "SEARCH_LIMIT": SEARCH_LIMIT,
+    "SEARCH_PLUGINS": SEARCH_PLUGINS,
+    "STATUS_LIMIT": STATUS_LIMIT,
+    "STATUS_UPDATE_INTERVAL": STATUS_UPDATE_INTERVAL,
+    "STOP_DUPLICATE": STOP_DUPLICATE,
+    "SUDO_USERS": SUDO_USERS,
+    "TELEGRAM_API": TELEGRAM_API,
+    "TELEGRAM_HASH": TELEGRAM_HASH,
+    "TORRENT_TIMEOUT": TORRENT_TIMEOUT,
+    "UPSTREAM_REPO": UPSTREAM_REPO,
+    "UPSTREAM_BRANCH": UPSTREAM_BRANCH,
+    "UPTOBOX_TOKEN": UPTOBOX_TOKEN,
+    "USER_SESSION_STRING": USER_SESSION_STRING,
+    "USE_SERVICE_ACCOUNTS": USE_SERVICE_ACCOUNTS,
+    "VIEW_LINK": VIEW_LINK,
+    "WEB_PINCODE": WEB_PINCODE,
+    "YT_DLP_QUALITY": YT_DLP_QUALITY,
+    "USER_MAX_TASKS": USER_MAX_TASKS,
+    "LOG_CHAT": LOG_CHAT,
+    "FSUB_IDS": FSUB_IDS,
+    "STORAGE_THRESHOLD": STORAGE_THRESHOLD,
+    "TORRENT_LIMIT": TORRENT_LIMIT,
+    "DIRECT_LIMIT": DIRECT_LIMIT,
+    "YTDLP_LIMIT": YTDLP_LIMIT,
+    "GDRIVE_LIMIT": GDRIVE_LIMIT,
+    "CLONE_LIMIT": CLONE_LIMIT,
+    "MEGA_LIMIT": MEGA_LIMIT,
+    "LEECH_LIMIT": LEECH_LIMIT,
+    "ENABLE_MESSAGE_FILTER": ENABLE_MESSAGE_FILTER,
+    "STOP_DUPLICATE_TASKS": STOP_DUPLICATE_TASKS,
+    "DISABLE_DRIVE_LINK": DISABLE_DRIVE_LINK,
+    "SET_COMMANDS": SET_COMMANDS,
+    "DISABLE_LEECH": DISABLE_LEECH,
+    "REQUEST_LIMITS": REQUEST_LIMITS,
+    "DM_MODE": DM_MODE,
+    "DELETE_LINKS": DELETE_LINKS,
+}
+
+config_dict = OrderedDict(sorted(config_dict.items()))
 
 if GDRIVE_ID:
     list_drives['Main'] = {"drive_id": GDRIVE_ID, "index_link": INDEX_URL}
@@ -477,12 +527,13 @@ if ospath.exists('categories.txt'):
             categories[name] = tempdict
 
 if BASE_URL:
-    Popen(f"gunicorn web.wserver:app --bind 0.0.0.0:{SERVER_PORT}", shell=True)
+    Popen(
+        f"gunicorn web.wserver:app --bind 0.0.0.0:{BASE_URL_PORT} --worker-class gevent", shell=True)
 
-srun(["qbittorrent-nox", "-d", "--profile=."])
+srun(["qbittorrent-nox", "-d", f"--profile={getcwd()}"])
 if not ospath.exists('.netrc'):
     with open('.netrc', 'w'):
-       pass
+        pass
 srun(["chmod", "600", ".netrc"])
 srun(["cp", ".netrc", "/root/.netrc"])
 srun(["chmod", "+x", "aria.sh"])
@@ -498,6 +549,7 @@ if not ospath.exists('accounts'):
 sleep(0.5)
 
 aria2 = ariaAPI(ariaClient(host="http://localhost", port=6800, secret=""))
+
 
 def get_client():
     return qbClient(host="localhost", port=8090, VERIFY_WEBUI_CERTIFICATE=False, REQUESTS_ARGS={'timeout': (30, 60)})
@@ -519,6 +571,7 @@ def aria2c_init():
     except Exception as e:
         log_error(f"Aria2c initializing error: {e}")
 
+
 Thread(target=aria2c_init).start()
 sleep(1.5)
 
@@ -528,12 +581,9 @@ aria2c_global = ['bt-max-open-files', 'download-result', 'keep-unfinished-downlo
 
 if not aria2_options:
     aria2_options = aria2.client.get_global_option()
-    del aria2_options['dir']
 else:
-    a2c_glo = {}
-    for op in aria2c_global:
-        if op in aria2_options:
-            a2c_glo[op] = aria2_options[op]
+    a2c_glo = {op: aria2_options[op]
+               for op in aria2c_global if op in aria2_options}
     aria2.set_global_options(a2c_glo)
 
 qb_client = get_client()
@@ -551,8 +601,9 @@ else:
     qb_client.app_set_preferences(qb_opt)
 
 log_info("Creating client from BOT_TOKEN")
-bot = tgClient('bot', TELEGRAM_API, TELEGRAM_HASH, bot_token=BOT_TOKEN, parse_mode=enums.ParseMode.HTML)
-bot.start()
+bot = tgClient('bot', TELEGRAM_API, TELEGRAM_HASH, bot_token=BOT_TOKEN,
+               parse_mode=enums.ParseMode.HTML, max_concurrent_transmissions=1000).start()
 bot_loop = bot.loop
 bot_name = bot.me.username
-scheduler = AsyncIOScheduler(timezone=str(get_localzone()), event_loop=bot_loop)
+scheduler = AsyncIOScheduler(timezone=str(
+    get_localzone()), event_loop=bot_loop)
