@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
+from asyncio import (create_subprocess_exec, create_subprocess_shell,
+                     run_coroutine_threadsafe, sleep)
+from asyncio.subprocess import PIPE
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial, wraps
+from html import escape
 from re import match as re_match
 from time import time
-from html import escape
-from psutil import virtual_memory, cpu_percent, disk_usage
-from requests import head as rhead
 from urllib.request import urlopen
-from asyncio import create_subprocess_exec, create_subprocess_shell, run_coroutine_threadsafe, sleep
-from asyncio.subprocess import PIPE
-from pyrogram.types import BotCommand
-from functools import partial, wraps
-from concurrent.futures import ThreadPoolExecutor
 
-from bot import download_dict, download_dict_lock, botStartTime, user_data, config_dict, bot_loop, extra_buttons
+from psutil import cpu_percent, disk_usage, virtual_memory
+from pyrogram.types import BotCommand
+from requests import head as rhead
+
+from bot import (bot_loop, botStartTime, config_dict, download_dict,
+                 download_dict_lock, extra_buttons, user_data)
+from bot.helper.ext_utils.telegraph_helper import telegraph
 from bot.helper.telegram_helper.bot_commands import BotCommands
 from bot.helper.telegram_helper.button_build import ButtonMaker
 
@@ -99,6 +103,16 @@ def bt_selection_buttons(id_, isCanCncl=True):
     return buttons.build_menu(2)
 
 
+async def get_telegraph_list(telegraph_content):
+    path = [(await telegraph.create_page(title='Jmdkh-mltb Drive Search', content=content))["path"] for content in telegraph_content]
+    if len(path) > 1:
+        await telegraph.edit_telegraph(path, telegraph_content)
+    buttons = ButtonMaker()
+    buttons.ubutton("🔎 VIEW", f"https://telegra.ph/{path[0]}", 'header')
+    buttons = extra_btns(buttons)
+    return buttons.build_menu(1)
+
+
 def get_progress_bar_string(pct):
     pct = float(pct.strip('%'))
     p = min(max(pct, 0), 100)
@@ -114,9 +128,9 @@ def get_readable_message():
     STATUS_LIMIT = config_dict['STATUS_LIMIT']
     tasks = len(download_dict)
     globals()['PAGES'] = (tasks + STATUS_LIMIT - 1) // STATUS_LIMIT
-    if PAGE_NO > PAGES:
-        globals()['STATUS_START'] -= STATUS_LIMIT
-        globals()['PAGE_NO'] -= 1
+    if PAGE_NO > PAGES and PAGES != 0:
+        globals()['STATUS_START'] = STATUS_LIMIT * (PAGES - 1)
+        globals()['PAGE_NO'] = PAGES
     for download in list(download_dict.values())[STATUS_START:STATUS_LIMIT+STATUS_START]:
         msg += f"<b>{download.status()}</b>: <code>{escape(f'{download.name()}')}</code>"
         if download.status() not in [MirrorStatus.STATUS_SPLITTING, MirrorStatus.STATUS_SEEDING]:
