@@ -9,7 +9,7 @@ from aiofiles.os import path as aiopath
 from pyrogram.filters import command
 from pyrogram.handlers import MessageHandler
 
-from bot import (LOGGER, bot, categories, config_dict, download_dict,
+from bot import (LOGGER, bot, categories_dict, config_dict, download_dict,
                  download_dict_lock)
 from bot.helper.ext_utils.bot_utils import (cmd_exec, get_telegraph_list,
                                             is_gdrive_link, is_rclone_path,
@@ -32,14 +32,15 @@ from bot.helper.telegram_helper.message_utils import (anno_checker,
                                                       delete_links,
                                                       deleteMessage,
                                                       editMessage, isAdmin,
+                                                      isBot_canDm,
                                                       open_category_btns,
-                                                      sendDmMessage,
+                                                      request_limiter,
                                                       sendLogMessage,
                                                       sendMessage,
                                                       sendStatusMessage)
 
 
-async def rcloneNode(client, message, rcf, listener):
+async def rcloneNode(client, message, link, dst_path, rcf, listener):
     if link == 'rcl':
         link = await RcloneList(client, message).get_rclone_path('rcd')
         if not is_rclone_path(link):
@@ -176,7 +177,7 @@ async def gdcloneNode(message, link, listener):
         drive = GoogleDriveHelper(name, listener=listener)
         if files <= 20:
             msg = await sendMessage(message, f"Cloning: <code>{link}</code>")
-            link, size, mime_type, files, folders, dir_id = await sync_to_async(drive.clone, link, listener.drive_id or config_dict['GDRIVE_ID'])
+            link, size, mime_type, files, folders = await sync_to_async(drive.clone, link, listener.drive_id)
             await deleteMessage(msg)
         else:
             gid = ''.join(SystemRandom().choices(ascii_letters + digits, k=12))
@@ -184,12 +185,12 @@ async def gdcloneNode(message, link, listener):
                 download_dict[message.id] = GdriveStatus(
                     drive, size, message, gid, 'cl', listener.extra_details)
             await sendStatusMessage(message)
-            link, size, mime_type, files, folders, dir_id = await sync_to_async(drive.clone, link, listener.drive_id or config_dict['GDRIVE_ID'])
+            link, size, mime_type, files, folders = await sync_to_async(drive.clone, link, listener.drive_id)
         if not link:
             await delete_links(message)
             return
         LOGGER.info(f'Cloning Done: {name}')
-        await listener.onUploadComplete(link, size, files, folders, mime_type, name, drive_id=dir_id)
+        await listener.onUploadComplete(link, size, files, folders, mime_type, name)
     else:
         await sendMessage(message, CLONE_HELP_MESSAGE.format_map({'cmd': message.command[0]}))
 
@@ -290,20 +291,34 @@ async def clone(client, message):
     if not message.from_user:
         await delete_links(message)
         return
+    error_msg = []
+    error_button = None
     if not await isAdmin(message):
+        if await request_limiter(message):
+            await delete_links(message)
+            return
         raw_url = await stop_duplicate_tasks(message, link)
         if raw_url == 'duplicate_tasks':
             await delete_links(message)
             return
-        if await none_admin_utils(message, tag, False):
-            return
+        none_admin_msg, error_button = await none_admin_utils(message)
+        if none_admin_msg:
+            error_msg.extend(none_admin_msg)
     if (dmMode := config_dict['DM_MODE']) and message.chat.type == message.chat.type.SUPERGROUP:
-        dmMessage = await sendDmMessage(message, dmMode, False)
-        if dmMessage == 'BotNotStarted':
-            await delete_links(message)
-            return
+        dmMessage, error_button = await isBot_canDm(message, dmMode, button=error_button)
+        if dmMessage is not None and dmMessage != 'BotStarted':
+            error_msg.append(dmMessage)
     else:
         dmMessage = None
+    if error_msg:
+        final_msg = f'Hey, <b>{tag}</b>,\n'
+        for __i, __msg in enumerate(error_msg, 1):
+            final_msg += f'\n<b>{__i}</b>: {__msg}\n'
+        if error_button is not None:
+            error_button = error_button.build_menu(2)
+        await delete_links(message)
+        await sendMessage(message, final_msg, error_button)
+        return
 
     logMessage = await sendLogMessage(message, link, tag)
     if is_rclone_path(link):
@@ -312,14 +327,13 @@ async def clone(client, message):
             await delete_links(message)
             return
         if not config_dict['RCLONE_PATH'] and not dst_path:
-            await sendMessage(message, 'Destinantion not specified!')
+            await sendMessage(message, 'Destination not specified!')
             await delete_links(message)
             return
-        listener = MirrorLeechListener(message, tag=tag, select=select, isClone=True, drive_id=drive_id,
-                                       index_link=index_link, dmMessage=dmMessage, logMessage=logMessage, raw_url=raw_url)
-        await rcloneNode(client, message, link, listener)
+        listener = MirrorLeechListener(message, tag=tag, select=select, isClone=True, dmMessage=dmMessage, logMessage=logMessage, raw_url=raw_url)
+        await rcloneNode(client, message, link, dst_path, rcf, listener)
     else:
-        if not drive_id and len(categories) > 1:
+        if not drive_id and len(categories_dict) > 1:
             drive_id, index_link = await open_category_btns(message)
         if drive_id and not await sync_to_async(GoogleDriveHelper().getFolderData, drive_id):
             await sendMessage(message, "Google Drive id validation failed!!")
