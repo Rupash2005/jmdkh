@@ -1,4 +1,4 @@
-This is a Telegram Bot written in Python for mirroring files on the Internet to your Google Drive or Telegram. Based on [python-aria-mirror-bot](https://github.com/lzzy12/python-aria-mirror-bot)
+This is a Telegram Bot written in Python for mirroring files on the Internet to your Google Drive, Telegram or to any rclone supported cloud. Based on [python-aria-mirror-bot](https://github.com/lzzy12/python-aria-mirror-bot)
 
 # Features
 
@@ -23,7 +23,7 @@ In each single file there is a major change from base code, it's almost totaly d
 - Fix all download listener functions and status
 - Edit Global Options while bot running from bot settings
 
-### Leech
+### TG Upload/Download
 
 - Leech support
 - Splitting
@@ -34,10 +34,12 @@ In each single file there is a major change from base code, it's almost totaly d
 - Upload all files to specific superGroup/channel.
 - Leech Split size and equal split size settings for each user
 - Ability to leech splitted file parts in media group. Setting for each user
+- Download using premium account if available
+- Download restricted messages (document or link) by tg private/public/super links
 
 ### Google
 
-- Stop duplicates for all tasks except yt-dlp tasks
+- Stop duplicates for all tasks
 - Download from Google Drive
 - Counting Google Drive files/folders
 - Search in multiple Drive folder/TeamDrive
@@ -100,7 +102,7 @@ In each single file there is a major change from base code, it's almost totaly d
 
 ### Rclone
 
-- Download and Upload using rclone with and without service accounts
+- Download and Upload using rclone with and without random service accounts
 - Ability to choose config, remote and path from list with buttons
 - Ability to set rclone flags for each task or globally from config
 - Rclone.conf for each user

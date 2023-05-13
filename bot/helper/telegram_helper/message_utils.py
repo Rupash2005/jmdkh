@@ -2,6 +2,7 @@
 from asyncio import sleep
 from datetime import datetime, timedelta, timezone
 from time import time
+from re import match as re_match
 
 from pyrogram.errors import (FloodWait, PeerIdInvalid, RPCError,
                              UserNotParticipant)
@@ -101,6 +102,40 @@ async def delete_all_messages():
                 await deleteMessage(data[0])
             except Exception as e:
                 LOGGER.error(str(e))
+
+
+async def get_tg_link_content(link):
+    if link.startswith('https://t.me/'):
+        private = False
+        msg = re_match(r"https:\/\/t\.me\/(?:c\/)?([^\/]+)\/([0-9]+)", link)
+    else:
+        private = True
+        msg = re_match(
+            r"tg:\/\/openmessage\?user_id=([0-9]+)&message_id=([0-9]+)", link)
+        if not user:
+            raise Exception('USER_SESSION_STRING required for this private link!')
+
+    chat = msg.group(1)
+    msg_id = int(msg.group(2))
+    if chat.isdigit():
+        chat = int(chat) if private else int(f'-100{chat}')
+
+    try:
+        await bot.get_chat(chat)
+    except Exception as e:
+        private = True
+        if not user:
+            raise e
+
+    if private:
+        if (message := await user.get_messages(chat_id=chat, message_ids=msg_id)) and not message.empty:
+            return message, 'user'
+        else:
+            raise Exception("Mostly message has been deleted!")
+    elif (message := await bot.get_messages(chat_id=chat, message_ids=msg_id)) and not message.empty:
+        return message, 'bot'
+    else:
+        raise Exception("Mostly message has been deleted!")
 
 
 async def update_all_messages(force=False):
