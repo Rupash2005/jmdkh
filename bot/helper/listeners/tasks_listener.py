@@ -11,10 +11,11 @@ from aiofiles.os import path as aiopath
 from aiofiles.os import remove as aioremove
 from aioshutil import move
 
-from bot import (DATABASE_URL, DOWNLOAD_DIR, LOGGER, MAX_SPLIT_SIZE, Interval,
-                 aria2, config_dict, download_dict, download_dict_lock,
-                 non_queued_dl, non_queued_up, queue_dict_lock, queued_dl,
-                 queued_up, status_reply_dict_lock, user_data)
+from bot import (DATABASE_URL, DOWNLOAD_DIR, GLOBAL_EXTENSION_FILTER, LOGGER,
+                 MAX_SPLIT_SIZE, Interval, aria2, config_dict, download_dict,
+                 download_dict_lock, non_queued_dl, non_queued_up,
+                 queue_dict_lock, queued_dl, queued_up, status_reply_dict_lock,
+                 user_data)
 from bot.helper.ext_utils.bot_utils import (extra_btns, get_readable_file_size,
                                             get_readable_time, sync_to_async)
 from bot.helper.ext_utils.db_handler import DbManger
@@ -128,15 +129,21 @@ class MirrorLeechListener:
             await DbManger().add_incomplete_task(self.message.chat.id, self.message.link, self.tag)
 
     async def onDownloadComplete(self):
-        if len(self.sameDir) > 0:
-            await sleep(8)
         multi_links = False
+        while True:
+            if self.sameDir:
+                if self.sameDir['total'] == 1 or self.sameDir['total'] > 1 and len(self.sameDir['tasks']) > 1:
+                    break
+            else:
+                break
+            await sleep(0)
         async with download_dict_lock:
-            if len(self.sameDir) > 1:
-                self.sameDir.remove(self.uid)
+            if self.sameDir and self.sameDir['total'] > 1:
+                self.sameDir['tasks'].remove(self.uid)
+                self.sameDir['total'] -= 1
                 folder_name = (await listdir(self.dir))[-1]
                 path = f"{self.dir}/{folder_name}"
-                des_path = f"{DOWNLOAD_DIR}{list(self.sameDir)[0]}/{folder_name}"
+                des_path = f"{DOWNLOAD_DIR}{list(self.sameDir['tasks'])[0]}/{folder_name}"
                 await makedirs(des_path, exist_ok=True)
                 for item in await listdir(path):
                     if item.endswith(('.aria2', '.!qB')):
@@ -155,7 +162,10 @@ class MirrorLeechListener:
             await self.onUploadError('Downloaded! Waiting for other tasks...')
             return
         if name == "None" or self.isQbit or not await aiopath.exists(f"{self.dir}/{name}"):
-            name = (await listdir(self.dir))[0]
+            files = await listdir(self.dir)
+            name = files[-1]
+            if name == "yt-dlp-thumb":
+                name = files[0]
         m_path = f"{self.dir}/{name}"
         size = await get_path_size(m_path)
         async with queue_dict_lock:
@@ -176,6 +186,9 @@ class MirrorLeechListener:
             LEECH_SPLIT_SIZE = min(LEECH_SPLIT_SIZE, MAX_SPLIT_SIZE)
             cmd = ["7z", f"-v{LEECH_SPLIT_SIZE}b", "a",
                    "-mx=0", f"-p{self.pswd}", path, m_path]
+            for ext in GLOBAL_EXTENSION_FILTER:
+                ex_ext = f'-x!*.{ext}'
+                cmd.append(ex_ext)
             if self.isLeech and int(size) > LEECH_SPLIT_SIZE:
                 if self.pswd is None:
                     del cmd[4]
@@ -416,8 +429,11 @@ class MirrorLeechListener:
             if mime_type == "Folder":
                 msg += f'\n<b>SubFolders: </b>{folders}'
                 msg += f'\n<b>Files: </b>{files}'
-                drive_id = GoogleDriveHelper.getIdFromUrl(link)
-                msg += f"\n\n<b>Folder id</b>: <code>{drive_id}</code>"
+                try:
+                    drive_id = GoogleDriveHelper.getIdFromUrl(link)
+                    msg += f"\n\n<b>Folder id</b>: <code>{drive_id}</code>"
+                except:
+                    pass
             msg += f'\n\n<b>#cc</b>: {self.tag} | <b>Elapsed</b>: {get_readable_time(time() - self.extra_details["startTime"])}'
             msg += f"\n\n<b>Upload</b>: {self.extra_details['mode']}"
             if link or rclonePath and config_dict['RCLONE_SERVE_URL']:
@@ -495,8 +511,9 @@ class MirrorLeechListener:
             if self.uid in download_dict.keys():
                 del download_dict[self.uid]
             count = len(download_dict)
-            if self.uid in self.sameDir:
-                self.sameDir.remove(self.uid)
+            if self.sameDir and self.uid in self.sameDir['tasks']:
+                self.sameDir['tasks'].remove(self.uid)
+                self.sameDir['total'] -= 1
         msg = f"{self.tag} Download: {escape(error)}\n<b>Elapsed</b>: {get_readable_time(time() - self.extra_details['startTime'])}"
         msg += f"\n<b>Upload</b>: {self.extra_details['mode']}"
         await sendMessage(self.message, msg, button)

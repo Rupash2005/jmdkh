@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from asyncio import Lock
 from collections import OrderedDict
-# from faulthandler import enable as faulthandler_enable
+from faulthandler import enable as faulthandler_enable
 from logging import INFO, FileHandler, StreamHandler, basicConfig
 from logging import error as log_error
 from logging import getLogger
@@ -27,7 +27,7 @@ from qbittorrentapi import Client as qbClient
 from tzlocal import get_localzone
 from uvloop import install
 
-# faulthandler_enable()
+faulthandler_enable()
 install()
 setdefaulttimeout(600)
 
@@ -47,7 +47,7 @@ QbTorrents = {}
 list_drives_dict = {}
 shorteneres_list = []
 extra_buttons = {}
-GLOBAL_EXTENSION_FILTER = ['.aria2']
+GLOBAL_EXTENSION_FILTER = ['.aria2', '!qB']
 user_data = {}
 aria2_options = {}
 qbit_options = {}

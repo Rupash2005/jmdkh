@@ -67,6 +67,9 @@ async def rcloneNode(client, message, link, dst_path, rcf, listener):
             return
 
     dst_path = (dst_path or config_dict['RCLONE_PATH']).strip('/')
+    if not is_rclone_path(dst_path):
+        await sendMessage(message, 'Wrong Rclone Clone Destination!')
+        return
     if dst_path.startswith('mrcc:'):
         if config_path != f'rclone/{message.from_user.id}.conf':
             await sendMessage(message, 'You should use same rclone.conf to clone between pathies!')
@@ -230,16 +233,8 @@ async def clone(client, message):
         tag = f"@{username}"
     else:
         tag = message.from_user.mention
-    if reply_to := message.reply_to_message:
-        if len(link) == 0:
-            link = reply_to.text.split('\n', 1)[0].strip()
-        if sender_chat := reply_to.sender_chat:
-            tag = sender_chat.title
-        elif not reply_to.from_user.is_bot:
-            if username := reply_to.from_user.username:
-                tag = f"@{username}"
-            else:
-                tag = reply_to.from_user.mention
+    if len(link) == 0 and (reply_to := message.reply_to_message) and reply_to.text is not None:
+        link = reply_to.text.split('\n', 1)[0].strip()
 
     rcf = mesg[0].split(' rcf: ', 1)
     rcf = re_split(' up: | id: | index: ', rcf[1])[
@@ -267,7 +262,7 @@ async def clone(client, message):
     async def __run_multi():
         if multi <= 1:
             return
-        await sleep(4)
+        await sleep(5)
         nextmsg = await client.get_messages(chat_id=message.chat.id, message_ids=message.reply_to_message_id + 1)
         msg = message.text.split(maxsplit=mi+1)
         msg[mi] = f"{multi - 1}"
@@ -276,7 +271,7 @@ async def clone(client, message):
         if message.sender_chat:
             nextmsg.sender_chat = message.sender_chat
         nextmsg.from_user = message.from_user
-        await sleep(4)
+        await sleep(5)
         clone(client, nextmsg)
 
     __run_multi()
