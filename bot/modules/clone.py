@@ -2,7 +2,6 @@
 from asyncio import gather, sleep
 from json import loads
 from random import SystemRandom
-from re import split as re_split
 from string import ascii_letters, digits
 
 from aiofiles.os import path as aiopath
@@ -11,10 +10,10 @@ from pyrogram.handlers import MessageHandler
 
 from bot import (LOGGER, bot, categories_dict, config_dict, download_dict,
                  download_dict_lock)
-from bot.helper.ext_utils.bot_utils import (cmd_exec, get_telegraph_list,
-                                            is_gdrive_link, is_rclone_path,
-                                            is_share_link, new_task,
-                                            sync_to_async)
+from bot.helper.ext_utils.bot_utils import (arg_parser, cmd_exec,
+                                            get_telegraph_list, is_gdrive_link,
+                                            is_rclone_path, is_share_link,
+                                            new_task, sync_to_async)
 from bot.helper.ext_utils.exceptions import DirectDownloadLinkException
 from bot.helper.ext_utils.help_messages import CLONE_HELP_MESSAGE
 from bot.helper.ext_utils.task_manager import limit_checker
@@ -200,32 +199,22 @@ async def gdcloneNode(message, link, listener):
 
 @new_task
 async def clone(client, message):
-    mesg = message.text.split('\n')
-    message_args = mesg[0].split(maxsplit=1)
-    link = ''
-    select = False
-    multi = 0
+    input_list = message.text.split(' ')
+
+    arg_base = {'link': '', '-i': 0, '-up': '',
+                '-rcf': '', '-s': False, '-id': '', '-index': ''}
+
+    args = arg_parser(input_list[1:], arg_base)
+
+    multi = int(args['-i']) if args['-i'] and args['-i'].isdigit() else 0
+
+    dst_path = args['-up']
+    rcf = args['-rcf']
+    link = args['link']
+    select = args['-s']
+    drive_id = args['-id']
+    index_link = args['-index']
     raw_url = None
-    if len(message_args) > 1:
-        index = 1
-        args = mesg[0].split(maxsplit=2)
-        args.pop(0)
-        for x in args:
-            x = x.strip()
-            if x == 's':
-                select = True
-                index += 1
-            elif x.isdigit():
-                multi = int(x)
-                mi = index
-            else:
-                break
-        if multi == 0:
-            message_args = mesg[0].split(maxsplit=index)
-            if len(message_args) > index:
-                x = message_args[index].strip()
-                if not x.startswith(('up:', 'rcf:', 'id:', 'index:')):
-                    link = re_split(r' up: | rcf: | id: | index: ', x)[0].strip()
 
     if sender_chat := message.sender_chat:
         tag = sender_chat.title
@@ -233,46 +222,23 @@ async def clone(client, message):
         tag = f"@{username}"
     else:
         tag = message.from_user.mention
-    if len(link) == 0 and (reply_to := message.reply_to_message) and reply_to.text is not None:
+
+    if not link and (reply_to := message.reply_to_message):
         link = reply_to.text.split('\n', 1)[0].strip()
-
-    rcf = mesg[0].split(' rcf: ', 1)
-    rcf = re_split(' up: | id: | index: ', rcf[1])[
-        0].strip() if len(rcf) > 1 else None
-
-    dst_path = mesg[0].split(' up: ', 1)
-    dst_path = re_split(' rcf: | id: | index: ', dst_path[1])[
-        0].strip() if len(dst_path) > 1 else None
-
-    drive_id = mesg[0].split(' id: ', 1)
-    drive_id = re_split(' rcf: | up: | index: ', drive_id[1])[
-        0].strip() if len(drive_id) > 1 else None
-    if drive_id and is_gdrive_link(drive_id):
-        drive_id = GoogleDriveHelper.getIdFromUrl(drive_id)
-
-    index_link = mesg[0].split(' index: ', 1)
-    index_link = re_split(' rcf: | up: | id: ', index_link[1])[
-        0].strip() if len(index_link) > 1 else None
-    if index_link and not index_link.startswith(('http://', 'https://')):
-        index_link = None
-    if index_link and not index_link.endswith('/'):
-        index_link += '/'
 
     @new_task
     async def __run_multi():
-        if multi <= 1:
-            return
-        await sleep(5)
-        nextmsg = await client.get_messages(chat_id=message.chat.id, message_ids=message.reply_to_message_id + 1)
-        msg = message.text.split(maxsplit=mi+1)
-        msg[mi] = f"{multi - 1}"
-        nextmsg = await sendMessage(nextmsg, " ".join(msg))
-        nextmsg = await client.get_messages(chat_id=message.chat.id, message_ids=nextmsg.id)
-        if message.sender_chat:
-            nextmsg.sender_chat = message.sender_chat
-        nextmsg.from_user = message.from_user
-        await sleep(5)
-        clone(client, nextmsg)
+        if multi > 1:
+            await sleep(5)
+            msg = [s.strip() for s in input_list]
+            index = msg.index('-i')
+            msg[index+1] = f"{multi - 1}"
+            nextmsg = await client.get_messages(chat_id=message.chat.id, message_ids=message.reply_to_message_id + 1)
+            nextmsg = await sendMessage(nextmsg, " ".join(msg))
+            nextmsg = await client.get_messages(chat_id=message.chat.id, message_ids=nextmsg.id)
+            nextmsg.from_user = message.from_user
+            await sleep(5)
+            clone(client, nextmsg)
 
     __run_multi()
 
@@ -325,7 +291,8 @@ async def clone(client, message):
             await sendMessage(message, 'Destination not specified!')
             await delete_links(message)
             return
-        listener = MirrorLeechListener(message, tag=tag, select=select, isClone=True, dmMessage=dmMessage, logMessage=logMessage, raw_url=raw_url)
+        listener = MirrorLeechListener(message, tag=tag, select=select, isClone=True,
+                                       dmMessage=dmMessage, logMessage=logMessage, raw_url=raw_url)
         await rcloneNode(client, message, link, dst_path, rcf, listener)
     else:
         if not drive_id and len(categories_dict) > 1:
