@@ -1,8 +1,6 @@
-Torrent 1-ADgm0w-IA9qQU9nsCymO-_Xovsg06QZ https://upload.rubyshare111.workers.dev/0:/Torrent
-REMUX 1qXwOq5KfRrnZ3tDo_dvXNgO4dkAIfE-x https://upload.rubyshare111.workers.dev/0:/REMUX
-DV 1qabCtl-gJv7X0fnYmUr4Oi88nEZybrpb https://upload.rubyshare111.workers.dev/0:/DOLBY%20VISION
-SERIES 1qg08ibh-hWzErhzZkT9zBmhPOwArx_7f https://upload.rubyshare111.workers.dev/0:/SERIES
-HDor4K 1qswZ8XBjqttDec0vy_msbGejfia2v3GV https://upload.rubyshare111.workers.dev/0:/1080P%20+%204K
-GAMES 1qc7rVZ--jaOqTeGmDDl-kUFWm3tEzR3P https://upload.rubyshare111.workers.dev/0:/GAMES
-HDR 1qvZLC2jSgGRs4UGlQ0Rk0XZJpP9oSGzh https://upload.rubyshare111.workers.dev/0:/HDR%20&%20HDR10+
-Apps 16-AuAQ3xGeqnp4RcZnwusuuVznRahEZl https://upload.rubyshare111.workers.dev/0:/APPS
+Torrent 1GYjeOjRuKaoL_cMcrJwmLZShBxPQtMYv https://rubyplex.online/0:/Torrent
+REMUX 1mEOhA2fp5ltwNWxFS4mpIXHRyS1ynbiD https://rubyplex.online/0:/Plex/Remux
+SERIES 1VhNBH9YPLnhsEsGPnJ2c7GH8ZqjZEMOV https://rubyplex.online/0:/Plex/Series
+HDor4K 1BCcbIPOshQUvBBW6EqpEpPcbz4l61YKp https://rubyplex.online/0:/Plex/1080P%20+%204K
+GAMES 11JFsaYq-hkq0s3xi6INX9Qhk4OxE4_TQ https://rubyplex.online/0:/Games
+HDR 15RFMAxunIIqqn8p_wn8jUPgWJy1i-wnK https://rubyplex.online/0:/Plex/HDR%20&%20HDR10+%20
